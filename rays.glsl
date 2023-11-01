@@ -8,6 +8,12 @@ layout(location = 2) uniform vec2 background_center;
 
 #define PI 3.1415926538
 
+vec3 the_vertices[4];
+vec4 the_circles[3]; // x y z r
+ivec3 the_triangles[2];// Consist of indices of the_vertices
+vec3 the_camera;
+vec3 the_focus;
+
 vec4 draw_crosshair(vec2 texel_coord, vec4 pixel_color)
 {
     float dx = abs(mouse_pos.x - texel_coord.x);
@@ -25,56 +31,12 @@ vec4 draw_crosshair(vec2 texel_coord, vec4 pixel_color)
     return pixel_color;
 }
 
-void main()
-{
-	vec4 pixel_color;
-	ivec2 texel_coord = ivec2(gl_GlobalInvocationID.xy);
-    vec3 the_vertices[4];
-    vec4 the_circles[3]; // x y z r
-    ivec3 the_triangles[2];// Consist of indices of the_vertices
-    vec3 the_camera;
-    vec3 the_focus;
-    vec3 the_up;
-    vec3 bg_color;
-    float w = 800.0f;
-    float h = 600.0f;
+struct Pixel_info {
+    vec4 color;
+    float distance;
+};
 
-    float fov_h = 60.0f;
-    float fov_v = fov_h * h / w;
-    // Defining -1 <= x <= 1 gives us this distance to (render) screen:
-    // tan (fov_H/2) = opp/adj =>
-    // adj = opp/tan(fov_H/2) =
-    // adj = 1/tan(fov_H/2)
-    float dist_to_render_screen = 1.0f / tan(radians(fov_h / 2.0f));
-
-    // TODO: Something is a bit fishy. FOV?
-    the_camera = vec3(20, 10+15*sin(t), 5);
-    the_focus = vec3(0, 0, 0);
-    the_up = vec3(0, 1, 0);
-    bg_color = vec3(0.4, 0.3, 0.5+0.3*sin(5.0*t+texel_coord.x/300.0f));
-
-    the_vertices[0] = vec3(-10, 0, -10);
-    the_vertices[1] = vec3(-10, 0, 10);
-    the_vertices[2] = vec3(10, 0, 10);
-    the_vertices[3] = vec3(10, 0, -10);
-
-    the_triangles[0] = ivec3(0, 1, 2);
-    the_triangles[1] = ivec3(2, 3, 0);
-
-    the_circles[0] = vec4(0, 0, 0, 2);
-    the_circles[1] = vec4(5, 1, -2, 2);
-    the_circles[2] = vec4(5, 2, 2, 2);
-
-    vec3 render_screen_x = normalize(cross(normalize(the_focus - the_camera), normalize(the_up)));
-    vec3 render_screen_y = normalize(cross(render_screen_x, normalize(the_focus - the_camera)));
-
-    vec3 render_screen_pixel = the_camera + dist_to_render_screen * normalize(the_focus - the_camera) + (2 * render_screen_x * (float(texel_coord.x) / w - 0.5f)) + (2 * render_screen_y * (float(texel_coord.y) / h - 0.5f));
-    vec3 ray = normalize(render_screen_pixel - the_camera);
-
-    float closest_distance = 10000;
-
-    pixel_color = vec4(bg_color, 1);
-
+Pixel_info do_triangles(Pixel_info pixel, vec3 ray) {
     for (int idx_triangle = 0; idx_triangle < 2; idx_triangle++) {
         vec3 current_vertices[3];
         ivec3 current_triangle = the_triangles[idx_triangle];
@@ -88,7 +50,7 @@ void main()
         vec3 plane_intersect_point = l0 + ray * d;
 
         float distance_from_camera = distance(plane_intersect_point, the_camera);
-        if (distance_from_camera < closest_distance) {
+        if (distance_from_camera < pixel.distance) {
             float tot_angle = 0.0f;
             for (int idx_sub_triangle = 0; idx_sub_triangle < 3; idx_sub_triangle++) {
                 vec3 v1 = normalize(current_vertices[(0 + idx_sub_triangle) % 3] - plane_intersect_point);
@@ -96,34 +58,38 @@ void main()
                 float dot_res = min(1.0, dot(v1, v2));
                 tot_angle += acos(dot_res);
             }
-            if (abs(tot_angle - 2*PI) < 0.01f) {
+            if (abs(tot_angle - 2 * PI) < 0.01f) {
                 vec4 pixel_color_side_one = vec4(0.8, 0.2, 0.05, 1);
                 vec4 pixel_color_side_two = vec4(0.9, 0.4, 0.7, 1);
                 vec4 pixel_color_band = vec4(1, 1, 1, 1);
                 float sin_val = sin(10.0f * (plane_intersect_point.z / 10.0f + t));
-                pixel_color = pixel_color_side_one;
+                pixel.color = pixel_color_side_one;
                 float band_width = 1.0f;
                 if (sin_val < plane_intersect_point.x) {
-                    pixel_color = pixel_color_side_two;
+                    pixel.color = pixel_color_side_two;
                 }
                 else if (sin_val < plane_intersect_point.x + band_width) {
                     float mix_factor = (sin_val - plane_intersect_point.x) / band_width; // 0 <= mix_factor <= 1
-                    pixel_color = mix_factor * pixel_color_side_one + (1.0f - mix_factor) * pixel_color_side_two;
+                    pixel.color = mix_factor * pixel_color_side_one + (1.0f - mix_factor) * pixel_color_side_two;
                     float mix_factor2 = 0.15f * (sin(5 * t) + 1.0f) + 0.7f;
-                    pixel_color = mix_factor2 * pixel_color + (1 - mix_factor2) * pixel_color_band;
+                    pixel.color = mix_factor2 * pixel.color + (1 - mix_factor2) * pixel_color_band;
 
                 }
-                closest_distance = distance_from_camera;
+                pixel.distance = distance_from_camera;
 
                 //pixel_color = vec4(0.8, 0.8, 0.7, 1.0);
             }
             // This gives the nice flower effect
             if (abs(tot_angle - PI) < 0.01f) {
-                pixel_color = vec4(1, 0, 1, 1);
+                pixel.color = vec4(1, 0, 1, 1);
             }
         }
     }
 
+    return pixel;
+}
+
+Pixel_info do_spheres(Pixel_info pixel, vec3 ray) {
     for (int i = 0; i < 3; i++) {
         float a = 1.0f;
         float b = 2.0f * dot(ray, the_camera - the_circles[i].xyz);
@@ -148,18 +114,65 @@ void main()
             }
             if (use_root != 0.0f) {
                 vec3 collision_point = vec3(the_camera + use_root * ray);
-                if (distance(collision_point, the_camera) < closest_distance) {
+                float the_distance = distance(collision_point, the_camera);
+                if (the_distance < pixel.distance) {
                     vec3 v1 = collision_point - the_circles[i].xyz;
                     vec3 v2 = collision_point - the_camera;
                     float angle = acos(dot(v1, v2) / (length(v1) * length(v2)));
                     float angle_normalized = 2.0f * (angle / 3.1415f - 0.5f);
-                    pixel_color = vec4(angle_normalized, 0, 0, 1);
+                    pixel.color = vec4(angle_normalized, 0, 0, 1);
+                    pixel.distance = the_distance;
                 }
             }
         }
     }
 
-    pixel_color = draw_crosshair(texel_coord, pixel_color);
+    return pixel;
+}
 
-	imageStore(imgOutput, texel_coord, pixel_color);
+void main()
+{
+	ivec2 texel_coord = ivec2(gl_GlobalInvocationID.xy);
+    vec3 the_up;
+    vec4 bg_color;
+    float w = 800.0f;
+    float h = 600.0f;
+
+    float fov_h = 60.0f;
+    float fov_v = fov_h * h / w;
+    // Defining -1 <= x <= 1 gives us this distance to (render) screen:
+    // tan (fov_H/2) = opp/adj =>
+    // adj = opp/tan(fov_H/2) =
+    // adj = 1/tan(fov_H/2)
+    float dist_to_render_screen = 1.0f / tan(radians(fov_h / 2.0f));
+
+    the_camera = vec3(20, 10+15*sin(t), 5);
+    the_focus = vec3(0, 0, 0);
+    the_up = vec3(0, 1, 0);
+    bg_color = vec4(0.4, 0.3, 0.5+0.3*sin(5.0*t+texel_coord.x/300.0f), 1);
+
+    the_vertices[0] = vec3(-10, 0, -10);
+    the_vertices[1] = vec3(-10, 0, 10);
+    the_vertices[2] = vec3(10, 0, 10);
+    the_vertices[3] = vec3(10, 0, -10);
+
+    the_triangles[0] = ivec3(0, 1, 2);
+    the_triangles[1] = ivec3(2, 3, 0);
+
+    the_circles[0] = vec4(0, 0, 0, 2);
+    the_circles[1] = vec4(5, 1, -2, 2);
+    the_circles[2] = vec4(5, 2, 2, 2);
+
+    vec3 render_screen_x = normalize(cross(normalize(the_focus - the_camera), normalize(the_up)));
+    vec3 render_screen_y = normalize(cross(render_screen_x, normalize(the_focus - the_camera)));
+
+    vec3 render_screen_pixel = the_camera + dist_to_render_screen * normalize(the_focus - the_camera) + (2 * render_screen_x * (float(texel_coord.x) / w - 0.5f)) + (2 * render_screen_y * (float(texel_coord.y) / h - 0.5f));
+    vec3 ray = normalize(render_screen_pixel - the_camera);
+
+    Pixel_info pixel = Pixel_info(bg_color, 10000);
+    pixel = do_triangles(pixel, ray);
+    pixel = do_spheres(pixel, ray);
+    pixel.color = draw_crosshair(texel_coord, pixel.color);
+
+	imageStore(imgOutput, texel_coord, pixel.color);
 }
