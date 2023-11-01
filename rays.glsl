@@ -8,9 +8,12 @@ layout(location = 2) uniform vec2 background_center;
 
 #define PI 3.1415926538
 
-vec3 the_vertices[4];
-vec4 the_circles[3]; // x y z r
-ivec3 the_triangles[2];// Consist of indices of the_vertices
+const int num_triangles = 2;
+const int num_spheres = 3;
+const int num_vertices = 4;
+vec3 the_vertices[num_vertices];
+vec4 the_spheres[num_spheres]; // x y z r
+ivec3 the_triangles[num_triangles];// Consist of indices of the_vertices
 vec3 the_camera;
 vec3 the_focus;
 
@@ -37,7 +40,7 @@ struct Pixel_info {
 };
 
 Pixel_info do_triangles(Pixel_info pixel, vec3 ray) {
-	for (int idx_triangle = 0; idx_triangle < 2; idx_triangle++) {
+	for (int idx_triangle = 0; idx_triangle < num_triangles; idx_triangle++) {
 		vec3 current_vertices[3];
 		ivec3 current_triangle = the_triangles[idx_triangle];
 		current_vertices[0] = the_vertices[current_triangle.x];
@@ -92,8 +95,8 @@ Pixel_info do_triangles(Pixel_info pixel, vec3 ray) {
 Pixel_info do_spheres(Pixel_info pixel, vec3 ray) {
 	for (int i = 0; i < 3; i++) {
 		float a = 1.0f;
-		float b = 2.0f * dot(ray, the_camera - the_circles[i].xyz);
-		float c = dot(the_camera - the_circles[i].xyz, the_camera - the_circles[i].xyz) - the_circles[i].w * the_circles[i].w;
+		float b = 2.0f * dot(ray, the_camera - the_spheres[i].xyz);
+		float c = dot(the_camera - the_spheres[i].xyz, the_camera - the_spheres[i].xyz) - the_spheres[i].w * the_spheres[i].w;
 		// f(x) = a*x^2 + b*x + c = 0
 		// ==> x^2 + (b/a)*x + c/a = 0
 		// ==> pq-formula
@@ -116,7 +119,7 @@ Pixel_info do_spheres(Pixel_info pixel, vec3 ray) {
 				vec3 collision_point = vec3(the_camera + use_root * ray);
 				float the_distance = distance(collision_point, the_camera);
 				if (the_distance < pixel.distance) {
-					vec3 v1 = collision_point - the_circles[i].xyz;
+					vec3 v1 = collision_point - the_spheres[i].xyz;
 					vec3 v2 = collision_point - the_camera;
 					float angle = acos(dot(v1, v2) / (length(v1) * length(v2)));
 					float angle_normalized = 2.0f * (angle / 3.1415f - 0.5f);
@@ -159,15 +162,26 @@ void main()
 	the_triangles[0] = ivec3(0, 1, 2);
 	the_triangles[1] = ivec3(2, 3, 0);
 
-	the_circles[0] = vec4(0, 0, 0, 2);
-	the_circles[1] = vec4(5, 1, -2, 2);
-	the_circles[2] = vec4(5, 2, 2, 2);
+	the_spheres[0] = vec4(0, 0, 0, 2);
+	the_spheres[1] = vec4(5, 1, -2, 2);
+	the_spheres[2] = vec4(5, 2, 2, 2);
 
 	vec3 render_screen_x = normalize(cross(normalize(the_focus - the_camera), normalize(the_up)));
 	vec3 render_screen_y = normalize(cross(render_screen_x, normalize(the_focus - the_camera)));
 
 	vec3 render_screen_pixel = the_camera + dist_to_render_screen * normalize(the_focus - the_camera) + (2 * render_screen_x * (float(texel_coord.x) / w - 0.5f)) + (2 * render_screen_y * (float(texel_coord.y) / h - 0.5f));
 	vec3 ray = normalize(render_screen_pixel - the_camera);
+
+	if (texel_coord.y == (h - mouse_pos.y)){//}&& texel_coord.y == (h - mouse_pos.y)) {//(texel_coord.x-mouse_pos.x)* (texel_coord.x - mouse_pos.x)+ (texel_coord.y - h+mouse_pos.y)* (texel_coord.y - h+mouse_pos.y)<10) {
+		// TODO: Recolor a sphere when we click on it.
+		// This can be done by communicating via a buffer. Ie.
+		//	1. Host tells us that the user has clicked the mouse button
+		//	2. When we render the texel_coord that is the same as mouse_pos,
+		//		make that shader return a value (via a buffer) with the index
+		//		of the sphere that we clicked
+		imageStore(imgOutput, texel_coord, vec4(0,0,0,1));
+		return;
+	}
 
 	Pixel_info pixel = Pixel_info(bg_color, 10000);
 	pixel = do_triangles(pixel, ray);
