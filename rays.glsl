@@ -1,10 +1,29 @@
 # version 430 core
 
+struct Sphere {
+	float position[3];
+	float r;
+	float color[3];
+};
+
+struct Shared_data {
+	int host_idx_selected_sphere;
+	int device_idx_selected_sphere;
+};
+
 layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 layout(rgba32f, binding = 0) uniform image2D imgOutput;
 layout(location = 0) uniform float t;
 layout(location = 1) uniform vec2 mouse_pos;
 layout(location = 2) uniform vec2 background_center;
+layout(std430, binding = 0) buffer layout_spheres
+{
+	Sphere spheres[3];
+};
+layout(std430, binding = 1) buffer layout_shared_data
+{
+	Shared_data shared_data;
+};
 
 #define PI 3.1415926538
 
@@ -92,11 +111,18 @@ Pixel_info do_triangles(Pixel_info pixel, vec3 ray) {
 	return pixel;
 }
 
-Pixel_info do_spheres(Pixel_info pixel, vec3 ray) {
+Pixel_info do_spheres(Pixel_info pixel, vec3 ray, bool do_color) {
 	for (int i = 0; i < 3; i++) {
+		vec3 sphere_pos = vec3(spheres[i].position[0], spheres[i].position[1], spheres[i].position[2]);
+		float sphere_rad = spheres[i].r;
+		vec4 sphere_color = vec4(spheres[i].color[0], spheres[i].color[1], spheres[i].color[2], 1);
+		if (shared_data.host_idx_selected_sphere == i) {
+			sphere_color.x = 0.5;
+			sphere_color.y = 0.8;
+		}
 		float a = 1.0f;
-		float b = 2.0f * dot(ray, the_camera - the_spheres[i].xyz);
-		float c = dot(the_camera - the_spheres[i].xyz, the_camera - the_spheres[i].xyz) - the_spheres[i].w * the_spheres[i].w;
+		float b = 2.0f * dot(ray, the_camera - sphere_pos);
+		float c = dot(the_camera - sphere_pos, the_camera - sphere_pos) - sphere_rad * sphere_rad;
 		// f(x) = a*x^2 + b*x + c = 0
 		// ==> x^2 + (b/a)*x + c/a = 0
 		// ==> pq-formula
@@ -119,11 +145,15 @@ Pixel_info do_spheres(Pixel_info pixel, vec3 ray) {
 				vec3 collision_point = vec3(the_camera + use_root * ray);
 				float the_distance = distance(collision_point, the_camera);
 				if (the_distance < pixel.distance) {
-					vec3 v1 = collision_point - the_spheres[i].xyz;
+					vec3 v1 = collision_point - sphere_pos;
 					vec3 v2 = collision_point - the_camera;
 					float angle = acos(dot(v1, v2) / (length(v1) * length(v2)));
 					float angle_normalized = 2.0f * (angle / 3.1415f - 0.5f);
-					pixel.color = vec4(angle_normalized, 0, 0, 1);
+					if (do_color) {
+						shared_data.device_idx_selected_sphere = i;
+					}
+
+					pixel.color = sphere_color * angle_normalized;
 					pixel.distance = the_distance;
 				}
 			}
@@ -172,20 +202,15 @@ void main()
 	vec3 render_screen_pixel = the_camera + dist_to_render_screen * normalize(the_focus - the_camera) + (2 * render_screen_x * (float(texel_coord.x) / w - 0.5f)) + (2 * render_screen_y * (float(texel_coord.y) / h - 0.5f));
 	vec3 ray = normalize(render_screen_pixel - the_camera);
 
-	if (texel_coord.y == (h - mouse_pos.y)){//}&& texel_coord.y == (h - mouse_pos.y)) {//(texel_coord.x-mouse_pos.x)* (texel_coord.x - mouse_pos.x)+ (texel_coord.y - h+mouse_pos.y)* (texel_coord.y - h+mouse_pos.y)<10) {
-		// TODO: Recolor a sphere when we click on it.
-		// This can be done by communicating via a buffer. Ie.
-		//	1. Host tells us that the user has clicked the mouse button
-		//	2. When we render the texel_coord that is the same as mouse_pos,
-		//		make that shader return a value (via a buffer) with the index
-		//		of the sphere that we clicked
-		imageStore(imgOutput, texel_coord, vec4(0,0,0,1));
-		return;
+	bool do_color = false;
+
+	if (texel_coord.y == (h - mouse_pos.y) && texel_coord.x == mouse_pos.x){
+		do_color = true;
 	}
 
 	Pixel_info pixel = Pixel_info(bg_color, 10000);
 	pixel = do_triangles(pixel, ray);
-	pixel = do_spheres(pixel, ray);
+	pixel = do_spheres(pixel, ray, do_color);
 	pixel.color = draw_crosshair(texel_coord, pixel.color);
 
 	imageStore(imgOutput, texel_coord, pixel.color);

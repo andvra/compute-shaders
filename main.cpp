@@ -26,8 +26,8 @@ float deltaTime = 0.0f; // time between current frame and last frame
 float lastFrame = 0.0f; // time of last frame
 
 auto background_center = glm::vec2(500, 500);
-enum class Shaders { one, two };
-Shaders shader = Shaders::one;
+enum class Shaders { funky, rays };
+Shaders shader = Shaders::funky;
 
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 {
@@ -45,13 +45,24 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 		glfwSetWindowShouldClose(window, 1);
 		break;
 	case GLFW_KEY_1:
-		shader = Shaders::one;
+		shader = Shaders::funky;
 		break;
 	case GLFW_KEY_2:
-		shader = Shaders::two;
+		shader = Shaders::rays;
 		break;
 	}
 }
+
+struct Sphere {
+	float position[3];
+	float r;
+	float color[3];
+};
+
+struct Shared_data {
+	int host_idx_selected_sphere;
+	int device_idx_selected_sphere;
+};
 
 int main(int argc, char* argv[])
 {
@@ -133,11 +144,29 @@ int main(int argc, char* argv[])
 		data[i] = i;
 	}
 
-	GLuint ssbo;
-	glGenBuffers(1, &ssbo);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
+	GLuint ssbo_solver;
+	glGenBuffers(1, &ssbo_solver);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_solver);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(data), &data[0], GL_DYNAMIC_READ);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssbo);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssbo_solver);
+
+	Sphere spheres[3] = {	// x y z rad r g b
+		{10, 2,   1, 1, 1, 0, 0},
+		{7,  2.5, 3, 1, 0, 1, 0},
+		{4,  2,   5, 1, 0, 0, 1},
+	};
+	GLuint ssbo_spheres;
+	glGenBuffers(1, &ssbo_spheres);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_spheres);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Sphere) * 3, (const void*)&spheres[0], GL_DYNAMIC_DRAW);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo_spheres);
+
+	Shared_data shared_data = { -1, -1 };
+	GLuint ssbo_shared_data;
+	glGenBuffers(1, &ssbo_shared_data);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_shared_data);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Shared_data) * 1, (const void*)&shared_data, GL_DYNAMIC_DRAW);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo_shared_data);
 
 	int fCounter = 0;
 
@@ -168,7 +197,7 @@ int main(int argc, char* argv[])
 		glfwGetCursorPos(window, &xpos, &ypos);
 
 		switch (shader) {
-		case Shaders::one:
+		case Shaders::funky:
 			computeShader.use();
 			computeShader.setFloat("t", currentFrame);
 			computeShader.setVec2("mouse_pos", glm::vec2(xpos, ypos));
@@ -177,13 +206,18 @@ int main(int argc, char* argv[])
 			// make sure writing to image has finished before read
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 			break;
-		case Shaders::two:
+		case Shaders::rays:
 			rays.use();
 			rays.setFloat("t", currentFrame);
 			rays.setVec2("mouse_pos", glm::vec2(xpos, ypos));
 			rays.setVec2("background_center", background_center);
 			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
-			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+			Shared_data ss{};
+			glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(Shared_data), &ss);
+			ss.host_idx_selected_sphere = ss.device_idx_selected_sphere;
+			ss.device_idx_selected_sphere = -1;
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(Shared_data), &ss);
 			break;
 		}
 
