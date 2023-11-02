@@ -113,13 +113,12 @@ Collision_info do_triangles(Pixel_info pixel, vec3 ray) {
 				ret.collision_point = plane_intersect_point;
 				// https://math.stackexchange.com/questions/13261/how-to-get-a-reflection-vector
 				ret.collision_direction = ray - 2 * dot(ray, n) * n;
-
-
-				//pixel_color = vec4(0.8, 0.8, 0.7, 1.0);
 			}
 			// This gives the nice flower effect
+			// NB this is possible not good to keep, it doesn't follow the structure above
 			if (abs(tot_angle - PI) < 0.01f) {
 				pixel.color = vec4(1, 0, 1, 1);
+				ret.did_hit = true;
 			}
 		}
 	}
@@ -129,7 +128,10 @@ Collision_info do_triangles(Pixel_info pixel, vec3 ray) {
 	return ret;
 }
 
-Pixel_info do_spheres(Pixel_info pixel, vec3 ray, bool do_color) {
+Collision_info do_spheres(Pixel_info pixel, vec3 ray, bool do_color) {
+	Collision_info ret;
+	ret.did_hit = false;
+
 	for (int i = 0; i < 3; i++) {
 		vec3 sphere_pos = vec3(spheres[i].position[0], spheres[i].position[1], spheres[i].position[2]);
 		float sphere_rad = spheres[i].r;
@@ -172,12 +174,17 @@ Pixel_info do_spheres(Pixel_info pixel, vec3 ray, bool do_color) {
 
 					pixel.color = sphere_color * angle_normalized;
 					pixel.distance = the_distance;
+					ret.did_hit = true;
+					ret.collision_point = collision_point;
+					ret.collision_direction = collision_point - sphere_pos;
 				}
 			}
 		}
 	}
 
-	return pixel;
+	ret.pixel = pixel;
+
+	return ret;
 }
 
 void main()
@@ -225,13 +232,17 @@ void main()
 		do_color = true;
 	}
 
-	Collision_info collision_info ;
+	Collision_info collision_info;
 	Pixel_info pixel = Pixel_info(bg_color, 10000);
+
 	collision_info = do_triangles(pixel, ray);
 	if (collision_info.did_hit) {
 		pixel = collision_info.pixel;
 	}
-	pixel = do_spheres(collision_info.pixel, ray, do_color);
+	collision_info = do_spheres(collision_info.pixel, ray, do_color);
+	if (collision_info.did_hit) {
+		pixel = collision_info.pixel;
+	}
 	pixel.color = draw_crosshair(texel_coord, pixel.color);
 
 	imageStore(imgOutput, texel_coord, pixel.color);
