@@ -58,7 +58,17 @@ struct Pixel_info {
 	float distance;
 };
 
-Pixel_info do_triangles(Pixel_info pixel, vec3 ray) {
+struct Collision_info {
+	Pixel_info pixel;
+	bool did_hit;
+	vec3 collision_point;
+	vec3 collision_direction;
+};
+
+Collision_info do_triangles(Pixel_info pixel, vec3 ray) {
+	Collision_info ret;
+	ret.did_hit = false;
+
 	for (int idx_triangle = 0; idx_triangle < num_triangles; idx_triangle++) {
 		vec3 current_vertices[3];
 		ivec3 current_triangle = the_triangles[idx_triangle];
@@ -80,6 +90,7 @@ Pixel_info do_triangles(Pixel_info pixel, vec3 ray) {
 				float dot_res = min(1.0, dot(v1, v2));
 				tot_angle += acos(dot_res);
 			}
+			// Are we inside the triangle?
 			if (abs(tot_angle - 2 * PI) < 0.01f) {
 				vec4 pixel_color_side_one = vec4(0.8, 0.2, 0.05, 1);
 				vec4 pixel_color_side_two = vec4(0.9, 0.4, 0.7, 1);
@@ -98,6 +109,11 @@ Pixel_info do_triangles(Pixel_info pixel, vec3 ray) {
 
 				}
 				pixel.distance = distance_from_camera;
+				ret.did_hit = true;
+				ret.collision_point = plane_intersect_point;
+				// https://math.stackexchange.com/questions/13261/how-to-get-a-reflection-vector
+				ret.collision_direction = ray - 2 * dot(ray, n) * n;
+
 
 				//pixel_color = vec4(0.8, 0.8, 0.7, 1.0);
 			}
@@ -108,7 +124,9 @@ Pixel_info do_triangles(Pixel_info pixel, vec3 ray) {
 		}
 	}
 
-	return pixel;
+	ret.pixel = pixel;
+
+	return ret;
 }
 
 Pixel_info do_spheres(Pixel_info pixel, vec3 ray, bool do_color) {
@@ -117,8 +135,7 @@ Pixel_info do_spheres(Pixel_info pixel, vec3 ray, bool do_color) {
 		float sphere_rad = spheres[i].r;
 		vec4 sphere_color = vec4(spheres[i].color[0], spheres[i].color[1], spheres[i].color[2], 1);
 		if (shared_data.host_idx_selected_sphere == i) {
-			sphere_color.x = 0.5;
-			sphere_color.y = 0.8;
+			sphere_color = vec4(0.5 * sphere_color.xyz + vec3(0.5, 0.5, 0.5), 1);
 		}
 		float a = 1.0f;
 		float b = 2.0f * dot(ray, the_camera - sphere_pos);
@@ -208,9 +225,13 @@ void main()
 		do_color = true;
 	}
 
+	Collision_info collision_info ;
 	Pixel_info pixel = Pixel_info(bg_color, 10000);
-	pixel = do_triangles(pixel, ray);
-	pixel = do_spheres(pixel, ray, do_color);
+	collision_info = do_triangles(pixel, ray);
+	if (collision_info.did_hit) {
+		pixel = collision_info.pixel;
+	}
+	pixel = do_spheres(collision_info.pixel, ray, do_color);
 	pixel.color = draw_crosshair(texel_coord, pixel.color);
 
 	imageStore(imgOutput, texel_coord, pixel.color);
