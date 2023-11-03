@@ -65,7 +65,7 @@ struct Collision_info {
 	vec3 collision_direction;
 };
 
-Collision_info do_triangles(Pixel_info pixel, vec3 ray) {
+Collision_info do_triangles(float min_distance, vec3 ray) {
 	Collision_info ret;
 	ret.did_hit = false;
 
@@ -82,7 +82,7 @@ Collision_info do_triangles(Pixel_info pixel, vec3 ray) {
 		vec3 plane_intersect_point = l0 + ray * d;
 
 		float distance_from_camera = distance(plane_intersect_point, the_camera);
-		if (distance_from_camera < pixel.distance) {
+		if (distance_from_camera < min_distance) {
 			float tot_angle = 0.0f;
 			for (int idx_sub_triangle = 0; idx_sub_triangle < 3; idx_sub_triangle++) {
 				vec3 v1 = normalize(current_vertices[(0 + idx_sub_triangle) % 3] - plane_intersect_point);
@@ -96,19 +96,19 @@ Collision_info do_triangles(Pixel_info pixel, vec3 ray) {
 				vec4 pixel_color_side_two = vec4(0.9, 0.4, 0.7, 1);
 				vec4 pixel_color_band = vec4(1, 1, 1, 1);
 				float sin_val = sin(10.0f * (plane_intersect_point.z / 10.0f + t));
-				pixel.color = pixel_color_side_one;
+				ret.pixel.color = pixel_color_side_one;
 				float band_width = 1.0f;
 				if (sin_val < plane_intersect_point.x) {
-					pixel.color = pixel_color_side_two;
+					ret.pixel.color = pixel_color_side_two;
 				}
 				else if (sin_val < plane_intersect_point.x + band_width) {
 					float mix_factor = (sin_val - plane_intersect_point.x) / band_width; // 0 <= mix_factor <= 1
-					pixel.color = mix_factor * pixel_color_side_one + (1.0f - mix_factor) * pixel_color_side_two;
+					ret.pixel.color = mix_factor * pixel_color_side_one + (1.0f - mix_factor) * pixel_color_side_two;
 					float mix_factor2 = 0.15f * (sin(5 * t) + 1.0f) + 0.7f;
-					pixel.color = mix_factor2 * pixel.color + (1 - mix_factor2) * pixel_color_band;
+					ret.pixel.color = mix_factor2 * ret.pixel.color + (1 - mix_factor2) * pixel_color_band;
 
 				}
-				pixel.distance = distance_from_camera;
+				ret.pixel.distance = distance_from_camera;
 				ret.did_hit = true;
 				ret.collision_point = plane_intersect_point;
 				// https://math.stackexchange.com/questions/13261/how-to-get-a-reflection-vector
@@ -117,18 +117,16 @@ Collision_info do_triangles(Pixel_info pixel, vec3 ray) {
 			// This gives the nice flower effect
 			// NB this is possible not good to keep, it doesn't follow the structure above
 			if (abs(tot_angle - PI) < 0.01f) {
-				pixel.color = vec4(1, 0, 1, 1);
+				ret.pixel.color = vec4(1, 0, 1, 1);
 				ret.did_hit = true;
 			}
 		}
 	}
 
-	ret.pixel = pixel;
-
 	return ret;
 }
 
-Collision_info do_spheres(Pixel_info pixel, vec3 ray, bool do_color) {
+Collision_info do_spheres(float min_distance, vec3 ray, bool do_color) {
 	Collision_info ret;
 	ret.did_hit = false;
 
@@ -163,7 +161,7 @@ Collision_info do_spheres(Pixel_info pixel, vec3 ray, bool do_color) {
 			if (use_root != 0.0f) {
 				vec3 collision_point = vec3(the_camera + use_root * ray);
 				float the_distance = distance(collision_point, the_camera);
-				if (the_distance < pixel.distance) {
+				if (the_distance < min_distance) {
 					vec3 v1 = collision_point - sphere_pos;
 					vec3 v2 = collision_point - the_camera;
 					float angle = acos(dot(v1, v2) / (length(v1) * length(v2)));
@@ -172,8 +170,8 @@ Collision_info do_spheres(Pixel_info pixel, vec3 ray, bool do_color) {
 						shared_data.device_idx_selected_sphere = i;
 					}
 
-					pixel.color = sphere_color * angle_normalized;
-					pixel.distance = the_distance;
+					ret.pixel.color = sphere_color * angle_normalized;
+					ret.pixel.distance = the_distance;
 					ret.did_hit = true;
 					ret.collision_point = collision_point;
 					ret.collision_direction = collision_point - sphere_pos;
@@ -181,8 +179,6 @@ Collision_info do_spheres(Pixel_info pixel, vec3 ray, bool do_color) {
 			}
 		}
 	}
-
-	ret.pixel = pixel;
 
 	return ret;
 }
@@ -233,13 +229,15 @@ void main()
 	}
 
 	Collision_info collision_info;
-	Pixel_info pixel = Pixel_info(bg_color, 10000);
+	float min_distance = 10000;
+	Pixel_info pixel = Pixel_info(bg_color, min_distance);
 
-	collision_info = do_triangles(pixel, ray);
+	collision_info = do_triangles(min_distance, ray);
 	if (collision_info.did_hit) {
 		pixel = collision_info.pixel;
+		min_distance = pixel.distance;
 	}
-	collision_info = do_spheres(collision_info.pixel, ray, do_color);
+	collision_info = do_spheres(min_distance, ray, do_color);
 	if (collision_info.did_hit) {
 		pixel = collision_info.pixel;
 	}
