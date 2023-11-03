@@ -65,7 +65,7 @@ struct Collision_info {
 	vec3 collision_direction;
 };
 
-Collision_info do_triangles(float min_distance, vec3 ray) {
+Collision_info do_triangles(float min_distance, vec3 ray_start_pos, vec3 ray) {
 	Collision_info ret;
 	ret.did_hit = false;
 
@@ -76,12 +76,12 @@ Collision_info do_triangles(float min_distance, vec3 ray) {
 		current_vertices[1] = the_vertices[current_triangle.y];
 		current_vertices[2] = the_vertices[current_triangle.z];
 		vec3 p0 = (current_vertices[0] + current_vertices[1] + current_vertices[2]) / 3.0f;
-		vec3 l0 = the_camera;
+		vec3 l0 = ray_start_pos;
 		vec3 n = normalize(cross(current_vertices[1] - current_vertices[0], current_vertices[2] - current_vertices[1]));
 		float d = dot(p0 - l0, n) / dot(ray, n);
 		vec3 plane_intersect_point = l0 + ray * d;
 
-		float distance_from_camera = distance(plane_intersect_point, the_camera);
+		float distance_from_camera = distance(plane_intersect_point, ray_start_pos);
 		if (distance_from_camera < min_distance) {
 			float tot_angle = 0.0f;
 			for (int idx_sub_triangle = 0; idx_sub_triangle < 3; idx_sub_triangle++) {
@@ -126,7 +126,7 @@ Collision_info do_triangles(float min_distance, vec3 ray) {
 	return ret;
 }
 
-Collision_info do_spheres(float min_distance, vec3 ray, bool do_color) {
+Collision_info do_spheres(float min_distance, vec3 ray_start_pos, vec3 ray, bool do_color) {
 	Collision_info ret;
 	ret.did_hit = false;
 
@@ -138,8 +138,8 @@ Collision_info do_spheres(float min_distance, vec3 ray, bool do_color) {
 			sphere_color = vec4(0.5 * sphere_color.xyz + vec3(0.5, 0.5, 0.5), 1);
 		}
 		float a = 1.0f;
-		float b = 2.0f * dot(ray, the_camera - sphere_pos);
-		float c = dot(the_camera - sphere_pos, the_camera - sphere_pos) - sphere_rad * sphere_rad;
+		float b = 2.0f * dot(ray, ray_start_pos - sphere_pos);
+		float c = dot(ray_start_pos - sphere_pos, ray_start_pos - sphere_pos) - sphere_rad * sphere_rad;
 		// f(x) = a*x^2 + b*x + c = 0
 		// ==> x^2 + (b/a)*x + c/a = 0
 		// ==> pq-formula
@@ -159,11 +159,11 @@ Collision_info do_spheres(float min_distance, vec3 ray, bool do_color) {
 				use_root = root_2;
 			}
 			if (use_root != 0.0f) {
-				vec3 collision_point = vec3(the_camera + use_root * ray);
-				float the_distance = distance(collision_point, the_camera);
+				vec3 collision_point = vec3(ray_start_pos + use_root * ray);
+				float the_distance = distance(collision_point, ray_start_pos);
 				if (the_distance < min_distance) {
 					vec3 v1 = collision_point - sphere_pos;
-					vec3 v2 = collision_point - the_camera;
+					vec3 v2 = collision_point - ray_start_pos;
 					float angle = acos(dot(v1, v2) / (length(v1) * length(v2)));
 					float angle_normalized = 2.0f * (angle / 3.1415f - 0.5f);
 					if (do_color) {
@@ -228,19 +228,52 @@ void main()
 		do_color = true;
 	}
 
-	Collision_info collision_info;
-	float min_distance = 10000;
+	const float min_distance = 10000;
 	Pixel_info pixel = Pixel_info(bg_color, min_distance);
 
-	collision_info = do_triangles(min_distance, ray);
-	if (collision_info.did_hit) {
-		pixel = collision_info.pixel;
-		min_distance = pixel.distance;
+	const int max_bounces = 3;
+	vec4 bounce_color[max_bounces];
+	float bounce_reflectivity[max_bounces];	// 0 - 1
+	int actual_bounces = 0;
+
+	for (int idx_bounce = 0; idx_bounce < max_bounces; idx_bounce++) {
+		float cur_distance = min_distance;
+		Collision_info collision_info[2];
+		Collision_info best_collision_info;
+		best_collision_info.did_hit = false;
+
+		for (int idx_type = 0; idx_type < 2; idx_type++) {
+			switch (idx_type) {
+			case 0:
+				collision_info[idx_type] = do_triangles(cur_distance, the_camera, ray);
+				break;
+			case 1:
+				collision_info[idx_type] = do_spheres(cur_distance, the_camera, ray, do_color);
+				break;
+			}
+
+			if (collision_info[idx_type].did_hit) {
+				cur_distance = collision_info[idx_type].pixel.distance;
+				best_collision_info = collision_info[idx_type];
+			}
+		}
+
+		if (best_collision_info.did_hit) {
+			// We hit something
+			bounce_color[idx_bounce] = best_collision_info.pixel.color;
+			bounce_reflectivity[idx_bounce] = 0.5; // TODO: 50% reflectivity for now. Make this dynamic
+			ray = best_collision_info.collision_direction;
+		}
+		else {
+			// We reached the background
+			bounce_color[idx_bounce] = bg_color;
+			bounce_reflectivity[idx_bounce] = 0;
+			break;
+		}
 	}
-	collision_info = do_spheres(min_distance, ray, do_color);
-	if (collision_info.did_hit) {
-		pixel = collision_info.pixel;
-	}
+
+	pixel.color = bounce_color[0];
+
 	pixel.color = draw_crosshair(texel_coord, pixel.color);
 
 	imageStore(imgOutput, texel_coord, pixel.color);
