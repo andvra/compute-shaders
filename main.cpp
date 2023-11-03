@@ -150,15 +150,16 @@ int main(int argc, char* argv[])
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(data), &data[0], GL_DYNAMIC_READ);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssbo_solver);
 
-	Sphere spheres[3] = {	// x y z rad r g b
+	std::vector<Sphere> spheres = {	// x y z rad r g b
 		{10, 2,   1, 1, 1, 0, 0},
 		{7,  2.5, 3, 1, 0, 1, 0},
 		{4,  2,   5, 1, 0, 0, 1},
+		{0,  2,   0, 4, 1, 1, 1},
 	};
 	GLuint ssbo_spheres;
 	glGenBuffers(1, &ssbo_spheres);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_spheres);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Sphere) * 3, (const void*)&spheres[0], GL_DYNAMIC_DRAW);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Sphere) * spheres.size(), (const void*)spheres.data(), GL_DYNAMIC_DRAW);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo_spheres);
 
 	Shared_data shared_data = { -1, -1 };

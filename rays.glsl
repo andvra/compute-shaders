@@ -18,7 +18,7 @@ layout(location = 1) uniform vec2 mouse_pos;
 layout(location = 2) uniform vec2 background_center;
 layout(std430, binding = 0) buffer layout_spheres
 {
-	Sphere spheres[3];
+	Sphere spheres[];
 };
 layout(std430, binding = 1) buffer layout_shared_data
 {
@@ -28,13 +28,9 @@ layout(std430, binding = 1) buffer layout_shared_data
 #define PI 3.1415926538
 
 const int num_triangles = 2;
-const int num_spheres = 3;
 const int num_vertices = 4;
 vec3 the_vertices[num_vertices];
-vec4 the_spheres[num_spheres]; // x y z r
 ivec3 the_triangles[num_triangles];// Consist of indices of the_vertices
-vec3 the_camera;
-vec3 the_focus;
 const float w = 1200.0f;
 const float h = 900.0f;
 
@@ -132,7 +128,7 @@ Collision_info do_spheres(float min_distance, vec3 ray_start_pos, vec3 ray, bool
 	Collision_info ret;
 	ret.did_hit = false;
 
-	for (int i = 0; i < 3; i++) {
+	for (int i = 0; i < spheres.length(); i++) {
 		vec3 sphere_pos = vec3(spheres[i].position[0], spheres[i].position[1], spheres[i].position[2]);
 		float sphere_rad = spheres[i].r;
 		vec4 sphere_color = vec4(spheres[i].color[0], spheres[i].color[1], spheres[i].color[2], 1);
@@ -190,6 +186,8 @@ void main()
 	ivec2 texel_coord = ivec2(gl_GlobalInvocationID.xy);
 	vec3 the_up;
 	vec4 bg_color;
+	vec3 the_camera;
+	vec3 the_focus;
 
 	float fov_h = 60.0f;
 	float fov_v = fov_h * h / w;
@@ -212,13 +210,10 @@ void main()
 	the_triangles[0] = ivec3(0, 1, 2);
 	the_triangles[1] = ivec3(2, 3, 0);
 
-	the_spheres[0] = vec4(0, 0, 0, 2);
-	the_spheres[1] = vec4(5, 1, -2, 2);
-	the_spheres[2] = vec4(5, 2, 2, 2);
-
 	vec3 render_screen_x = normalize(cross(normalize(the_focus - the_camera), normalize(the_up)));
 	vec3 render_screen_y = normalize(cross(render_screen_x, normalize(the_focus - the_camera)));
 
+	// TODO: SOmething's a bit fishy with the rays. See this for ray generation: https://viterbi-web.usc.edu/~jbarbic/cs420-s21/15-ray-tracing/15-ray-tracing.pdf
 	vec3 render_screen_pixel = the_camera + dist_to_render_screen * normalize(the_focus - the_camera) + (2 * render_screen_x * (float(texel_coord.x) / w - 0.5f)) + (2 * render_screen_y * (float(texel_coord.y) / h - 0.5f));
 	vec3 ray = normalize(render_screen_pixel - the_camera);
 
@@ -231,11 +226,12 @@ void main()
 	const float min_distance = 10000;
 	Pixel_info pixel = Pixel_info(bg_color, min_distance);
 
-	const int max_bounces = 3;
+	const int max_bounces = 1;
 	vec4 bounce_color[max_bounces];
 	float bounce_reflectivity[max_bounces];	// 0 - 1
 	int actual_bounces = 0;
 	int idx_bounce;
+	vec3 start_pos = the_camera;
 
 	for (idx_bounce = 0; idx_bounce < max_bounces; idx_bounce++) {
 		float cur_distance = min_distance;
@@ -246,10 +242,10 @@ void main()
 		for (int idx_type = 0; idx_type < 2; idx_type++) {
 			switch (idx_type) {
 			case 0:
-				collision_info[idx_type] = do_triangles(cur_distance, the_camera, ray);
+				collision_info[idx_type] = do_triangles(cur_distance, start_pos, ray);
 				break;
 			case 1:
-				collision_info[idx_type] = do_spheres(cur_distance, the_camera, ray, do_color);
+				collision_info[idx_type] = do_spheres(cur_distance, start_pos, ray, do_color);
 				break;
 			}
 
@@ -264,6 +260,7 @@ void main()
 			bounce_color[idx_bounce] = best_collision_info.pixel.color;
 			bounce_reflectivity[idx_bounce] = 0.5; // TODO: 50% reflectivity for now. Make this dynamic
 			ray = best_collision_info.collision_direction;
+			start_pos = best_collision_info.collision_point;
 		}
 		else {
 			// We reached the background
