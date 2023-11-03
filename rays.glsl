@@ -35,11 +35,13 @@ vec4 the_spheres[num_spheres]; // x y z r
 ivec3 the_triangles[num_triangles];// Consist of indices of the_vertices
 vec3 the_camera;
 vec3 the_focus;
+const float w = 1200.0f;
+const float h = 900.0f;
 
 vec4 draw_crosshair(vec2 texel_coord, vec4 pixel_color)
 {
 	float dx = abs(mouse_pos.x - texel_coord.x);
-	float dy = abs(600 - mouse_pos.y - texel_coord.y);
+	float dy = abs(h - mouse_pos.y - texel_coord.y);
 	float crosshair_width = 2;
 	float crosshair_height = 15;
 
@@ -188,8 +190,6 @@ void main()
 	ivec2 texel_coord = ivec2(gl_GlobalInvocationID.xy);
 	vec3 the_up;
 	vec4 bg_color;
-	float w = 800.0f;
-	float h = 600.0f;
 
 	float fov_h = 60.0f;
 	float fov_v = fov_h * h / w;
@@ -235,8 +235,9 @@ void main()
 	vec4 bounce_color[max_bounces];
 	float bounce_reflectivity[max_bounces];	// 0 - 1
 	int actual_bounces = 0;
+	int idx_bounce;
 
-	for (int idx_bounce = 0; idx_bounce < max_bounces; idx_bounce++) {
+	for (idx_bounce = 0; idx_bounce < max_bounces; idx_bounce++) {
 		float cur_distance = min_distance;
 		Collision_info collision_info[2];
 		Collision_info best_collision_info;
@@ -272,7 +273,12 @@ void main()
 		}
 	}
 
-	pixel.color = bounce_color[0];
+	vec4 the_color = bounce_color[idx_bounce];
+	for (int i = idx_bounce - 1; i >= 0; i--) {
+		the_color = (1 - bounce_reflectivity[i]) * bounce_color[i] + bounce_reflectivity[i] * the_color;
+	}
+
+	pixel.color = the_color;
 
 	pixel.color = draw_crosshair(texel_coord, pixel.color);
 

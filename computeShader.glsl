@@ -6,10 +6,13 @@ layout(location = 0) uniform float t;
 layout(location = 1) uniform vec2 mouse_pos;
 layout(location = 2) uniform vec2 background_center;
 
+const float w = 1200.0f;
+const float h = 900.0f;
+
 vec4 draw_crosshair(vec2 texel_coord, vec4 pixel_color)
 {
     float dx = abs(mouse_pos.x - texel_coord.x);
-    float dy = abs(600 - mouse_pos.y - texel_coord.y);
+    float dy = abs(h - mouse_pos.y - texel_coord.y);
     float crosshair_width = 2;
     float crosshair_height = 15;
 
@@ -29,7 +32,7 @@ void main()
     ivec2 texel_coord = ivec2(gl_GlobalInvocationID.xy);
 
     float d1 = distance(texel_coord, ivec2(background_center.x + 10 * sin(t), background_center.y + 15 * cos(t)));
-    float d2 = distance(texel_coord, ivec2(mouse_pos.x + 100 * sin(t + 0.2), 600 - mouse_pos.y + 60 * cos(t + 0.5)));
+    float d2 = distance(texel_coord, ivec2(mouse_pos.x + 100 * sin(t + 0.2), h - mouse_pos.y + 60 * cos(t + 0.5)));
     pixel_color.x = sin(d1 / 10);
     pixel_color.y = 0.5 + 0.5 * sin(d2 / 20);
 
