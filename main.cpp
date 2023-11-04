@@ -195,7 +195,7 @@ int main(int argc, char* argv[])
 	float last_fps_time = glfwGetTime();
 	int frame_counter = 0;
 
-	auto was_just_pressed = [](int key_code) -> bool {
+	auto key_was_just_pressed = [](int key_code) -> bool {
 		auto num_allocated_keys = sizeof(key_info) / sizeof(Key_info);
 		if (key_code >= num_allocated_keys) {
 			return false;
@@ -205,21 +205,20 @@ int main(int argc, char* argv[])
 		return ret;
 	};
 
+	auto key_is_pressed = [](int key_code) -> bool {
+		auto num_allocated_keys = sizeof(key_info) / sizeof(Key_info);
+		if (key_code >= num_allocated_keys) {
+			return false;
+		}
+		key_info[key_code].has_been_read = true;
+		return key_info[key_code].is_pressed;
+	};
+
+	glm::vec3 the_camera = glm::vec3(15, 5, 15);
+	glm::vec3 the_focus = glm::vec3(10, 0, 10);
+
 	while (!glfwWindowShouldClose(window))
 	{
-		if (was_just_pressed(GLFW_KEY_ESCAPE)) {
-			glfwSetWindowShouldClose(window, 1);
-			std::cout << "a" << std::endl;
-		}
-		if (was_just_pressed(GLFW_KEY_1)) {
-			shader = Shaders::funky;
-			std::cout << "b" << std::endl;
-		}
-		if (was_just_pressed(GLFW_KEY_2)) {
-			shader = Shaders::rays;
-			std::cout << "c" << std::endl;
-		}
-
 		float currentFrame = glfwGetTime();
 		deltaTime = currentFrame - lastFrame;
 		lastFrame = currentFrame;
@@ -229,6 +228,19 @@ int main(int argc, char* argv[])
 			std::cout << "FPS: " << frame_counter / fps_print_diff_time << std::endl;
 			frame_counter = 0;
 			last_fps_time = currentFrame;
+		}
+
+		if (key_was_just_pressed(GLFW_KEY_ESCAPE)) {
+			glfwSetWindowShouldClose(window, 1);
+		}
+		if (key_was_just_pressed(GLFW_KEY_1)) {
+			shader = Shaders::funky;
+		}
+		if (key_was_just_pressed(GLFW_KEY_2)) {
+			shader = Shaders::rays;
+		}
+		if (key_is_pressed(GLFW_KEY_W)) {
+			std::cout << "d" << std::endl;
 		}
 
 		double xpos, ypos;
@@ -249,9 +261,9 @@ int main(int argc, char* argv[])
 			rays.setFloat("t", currentFrame);
 			rays.setVec2("mouse_pos", glm::vec2(xpos, ypos));
 			rays.setVec2("background_center", background_center);
-			
+			rays.setVec3("the_focus", the_focus);
 			//rays.setVec3("the_camera", glm::vec3(10, 10, 10));
-			glm::vec3 the_camera = glm::vec3(20, 10 + 15 * sin(currentFrame), 5);
+			//the_camera = glm::vec3(20, 10 + 15 * sin(currentFrame), 5);
 			rays.setVec3("the_camera", the_camera);
 			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
