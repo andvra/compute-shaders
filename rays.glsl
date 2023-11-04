@@ -190,7 +190,7 @@ void main()
 	vec3 the_up;
 	vec4 bg_color;
 
-	float fov_h = 60.0f;
+	float fov_h = 90.0f;
 	float fov_v = fov_h * h / w;
 	// Defining -1 <= x <= 1 gives us this distance to (render) screen:
 	// tan (fov_H/2) = opp/adj =>
@@ -209,11 +209,11 @@ void main()
 	the_triangles[0] = ivec3(0, 1, 2);
 	the_triangles[1] = ivec3(2, 3, 0);
 
-	vec3 render_screen_x = normalize(cross(normalize(the_focus - the_camera), normalize(the_up)));
-	vec3 render_screen_y = normalize(cross(render_screen_x, normalize(the_focus - the_camera)));
+	vec3 render_screen_x = normalize(cross(the_focus, the_up));
+	vec3 render_screen_y = normalize(cross(render_screen_x, the_focus));
 
-	// TODO: SOmething's a bit fishy with the rays. See this for ray generation: https://viterbi-web.usc.edu/~jbarbic/cs420-s21/15-ray-tracing/15-ray-tracing.pdf
-	vec3 render_screen_pixel = the_camera + dist_to_render_screen * normalize(the_focus - the_camera) + (2 * render_screen_x * (float(texel_coord.x) / w - 0.5f)) + (2 * render_screen_y * (float(texel_coord.y) / h - 0.5f));
+	// TODO: Something's a bit fishy with the rays. See this for ray generation: https://viterbi-web.usc.edu/~jbarbic/cs420-s21/15-ray-tracing/15-ray-tracing.pdf
+	vec3 render_screen_pixel = the_camera + dist_to_render_screen * the_focus + (2 * render_screen_x * (float(texel_coord.x) / w - 0.5f)) + (2 * render_screen_y * (float(texel_coord.y) / h - 0.5f));
 	vec3 ray = normalize(render_screen_pixel - the_camera);
 
 	bool do_color = false;

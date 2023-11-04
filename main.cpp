@@ -1,4 +1,7 @@
-﻿#include <glad/glad.h>
+﻿#include <iostream>
+#include <numbers>
+
+#include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
 #include <glm/glm.hpp>
@@ -8,8 +11,6 @@
 #include "shader_m.h"
 #include "shader_c.h"
 #include "camera.h"
-
-#include <iostream>
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void renderQuad();
@@ -34,7 +35,16 @@ struct Key_info {
 	bool has_been_read;
 };
 
+struct Mouse_move_info {
+	int old_x;
+	int old_y;
+	int new_x;
+	int new_y;
+	bool has_been_read;
+};
+
 Key_info key_info[512] = {}; // GLFW_KEY_ESCAPE is 256 for some reason
+Mouse_move_info mouse_move_info = {};
 
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 {
@@ -44,6 +54,12 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 		background_center.x = xpos;
 		background_center.y = SCR_HEIGHT - ypos;
 	}
+}
+
+void mouse_move_callback(GLFWwindow* window, double xpos, double ypos) {
+	mouse_move_info.new_x = xpos;
+	mouse_move_info.new_y = ypos;
+	mouse_move_info.has_been_read = false;
 }
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
@@ -185,6 +201,7 @@ int main(int argc, char* argv[])
 
 	glfwSetMouseButtonCallback(window, mouse_button_callback);
 	glfwSetKeyCallback(window, key_callback);
+	glfwSetCursorPosCallback(window, mouse_move_callback);
 
 	// Work groups should be a multiple of 32, so make sure to adjust the local work group sizes accordingly
 	// See https://computergraphics.stackexchange.com/questions/13449/opengl-compute-local-size-vs-performance
@@ -214,9 +231,18 @@ int main(int argc, char* argv[])
 		return key_info[key_code].is_pressed;
 	};
 
-	glm::vec3 the_camera = glm::vec3(15, 5, 15);
+	glm::vec3 the_camera = glm::vec3(0, 15, 15);
 	glm::vec3 the_focus = glm::vec3(10, 0, 10);
+	float angle_alpha = std::numbers::pi;
+	float angle_beta = -std::numbers::pi / 8;
 
+	glfwSetCursorPos(window, SCR_WIDTH / 2, SCR_HEIGHT / 2);
+	mouse_move_info.has_been_read = true;
+	mouse_move_info.new_x = SCR_WIDTH / 2;
+	mouse_move_info.new_y = SCR_HEIGHT / 2;
+	mouse_move_info.old_x = SCR_WIDTH / 2;
+	mouse_move_info.old_y = SCR_HEIGHT / 2;
+	 
 	while (!glfwWindowShouldClose(window))
 	{
 		float currentFrame = glfwGetTime();
@@ -240,7 +266,34 @@ int main(int argc, char* argv[])
 			shader = Shaders::rays;
 		}
 		if (key_is_pressed(GLFW_KEY_W)) {
-			std::cout << "d" << std::endl;
+			the_camera += the_focus * deltaTime * 5.0f;
+		}
+		if (key_is_pressed(GLFW_KEY_S)) {
+			the_camera -= the_focus * deltaTime * 5.0f;
+		}
+		if (key_is_pressed(GLFW_KEY_A)) {
+			the_camera -= glm::normalize(glm::cross(the_focus, glm::vec3(0, 1, 0))) * deltaTime * 5.0f;
+		}
+		if (key_is_pressed(GLFW_KEY_D)) {
+			the_camera += glm::normalize(glm::cross(the_focus, glm::vec3(0, 1, 0))) * deltaTime * 5.0f;
+		}
+		if (!mouse_move_info.has_been_read) {
+			angle_alpha += (mouse_move_info.old_x - mouse_move_info.new_x) * deltaTime * 10.0f;
+			if (angle_alpha < 0) {
+				angle_alpha += 2 * std::numbers::pi;
+			}
+			if (angle_alpha > 2 * std::numbers::pi) {
+				angle_alpha -= 2 * std::numbers::pi;
+			}
+			angle_beta += (mouse_move_info.old_y - mouse_move_info.new_y) * deltaTime * 10.0f;
+			if (angle_beta <= -std::numbers::pi / 2) {
+				angle_beta = -std::numbers::pi / 2 + 0.00001f;
+			}
+			if (angle_beta >= std::numbers::pi / 2) {
+				angle_beta = std::numbers::pi / 2 - 0.00001f;
+			}
+			mouse_move_info.has_been_read = true;
+			glfwSetCursorPos(window, SCR_WIDTH / 2, SCR_HEIGHT / 2);
 		}
 
 		double xpos, ypos;
@@ -261,9 +314,11 @@ int main(int argc, char* argv[])
 			rays.setFloat("t", currentFrame);
 			rays.setVec2("mouse_pos", glm::vec2(xpos, ypos));
 			rays.setVec2("background_center", background_center);
+			the_focus.x = std::sin(angle_alpha) * std::cos(angle_beta);
+			the_focus.y = std::sin(angle_beta);
+			the_focus.z = std::cos(angle_alpha) * std::cos(angle_beta);
+			the_focus /= glm::length(the_focus);
 			rays.setVec3("the_focus", the_focus);
-			//rays.setVec3("the_camera", glm::vec3(10, 10, 10));
-			//the_camera = glm::vec3(20, 10 + 15 * sin(currentFrame), 5);
 			rays.setVec3("the_camera", the_camera);
 			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
