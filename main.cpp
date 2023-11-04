@@ -169,8 +169,6 @@ int main(int argc, char* argv[])
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Shared_data) * 1, (const void*)&shared_data, GL_DYNAMIC_DRAW);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo_shared_data);
 
-	int fCounter = 0;
-
 	glfwSetMouseButtonCallback(window, mouse_button_callback);
 	glfwSetKeyCallback(window, key_callback);
 
@@ -180,18 +178,20 @@ int main(int argc, char* argv[])
 	unsigned int workgroup_size_x = (unsigned int)ceil(TEXTURE_WIDTH / 32.0);
 	unsigned int workgroup_size_y = (unsigned int)ceil(TEXTURE_HEIGHT / 32.0);
 
+	float last_fps_time = glfwGetTime();
+	int frame_counter = 0;
+
 	while (!glfwWindowShouldClose(window))
 	{
 		float currentFrame = glfwGetTime();
 		deltaTime = currentFrame - lastFrame;
 		lastFrame = currentFrame;
 
-		if (fCounter > 500) {
-			std::cout << "FPS: " << 1 / deltaTime << std::endl;
-			fCounter = 0;
-		}
-		else {
-			fCounter++;
+		float fps_print_diff_time = currentFrame - last_fps_time;
+		if (fps_print_diff_time > 1.0f) {
+			std::cout << "FPS: " << frame_counter / fps_print_diff_time << std::endl;
+			frame_counter = 0;
+			last_fps_time = currentFrame;
 		}
 
 		double xpos, ypos;
@@ -212,6 +212,10 @@ int main(int argc, char* argv[])
 			rays.setFloat("t", currentFrame);
 			rays.setVec2("mouse_pos", glm::vec2(xpos, ypos));
 			rays.setVec2("background_center", background_center);
+			
+			//rays.setVec3("the_camera", glm::vec3(10, 10, 10));
+			glm::vec3 the_camera = glm::vec3(20, 10 + 15 * sin(currentFrame), 5);
+			rays.setVec3("the_camera", the_camera);
 			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 			Shared_data ss{};
@@ -237,6 +241,8 @@ int main(int argc, char* argv[])
 		renderQuad();
 		glfwSwapBuffers(window);
 		glfwPollEvents();
+
+		frame_counter++;
 	}
 
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0); // unbind

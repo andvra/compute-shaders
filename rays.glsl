@@ -16,6 +16,8 @@ layout(rgba32f, binding = 0) uniform image2D imgOutput;
 layout(location = 0) uniform float t;
 layout(location = 1) uniform vec2 mouse_pos;
 layout(location = 2) uniform vec2 background_center;
+layout(location = 3) uniform vec3 the_camera;
+
 layout(std430, binding = 0) buffer layout_spheres
 {
 	Sphere spheres[];
@@ -186,7 +188,7 @@ void main()
 	ivec2 texel_coord = ivec2(gl_GlobalInvocationID.xy);
 	vec3 the_up;
 	vec4 bg_color;
-	vec3 the_camera;
+	//vec3 the_camera = shared_data.the_camera;
 	vec3 the_focus;
 
 	float fov_h = 60.0f;
@@ -197,7 +199,6 @@ void main()
 	// adj = 1/tan(fov_H/2)
 	float dist_to_render_screen = 1.0f / tan(radians(fov_h / 2.0f));
 
-	the_camera = vec3(20, 10 + 15 * sin(t), 5);
 	the_focus = vec3(0, 0, 0);
 	the_up = vec3(0, 1, 0);
 	bg_color = vec4(0.4, 0.3, 0.5 + 0.3 * sin(5.0 * t + texel_coord.x / 300.0f), 1);
