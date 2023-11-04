@@ -29,6 +29,13 @@ auto background_center = glm::vec2(500, 500);
 enum class Shaders { funky, rays };
 Shaders shader = Shaders::funky;
 
+struct Key_info {
+	bool is_pressed;
+	bool has_been_read;
+};
+
+Key_info key_info[512] = {}; // GLFW_KEY_ESCAPE is 256 for some reason
+
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 {
 	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
@@ -40,17 +47,24 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 }
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-	switch (key) {
-	case GLFW_KEY_ESCAPE:
-		glfwSetWindowShouldClose(window, 1);
+	enum class Key_actions { up, down, holding };
+
+	auto num_allocated_keys = sizeof(key_info) / sizeof(Key_info);
+
+	if (key >= num_allocated_keys) {
+		return;
+	}
+
+	switch ((Key_actions)action) {
+	case Key_actions::down:
+		key_info[key].is_pressed = true;
+		key_info[key].has_been_read = false;
 		break;
-	case GLFW_KEY_1:
-		shader = Shaders::funky;
-		break;
-	case GLFW_KEY_2:
-		shader = Shaders::rays;
+	case Key_actions::up:
+		key_info[key].is_pressed = false;
 		break;
 	}
+
 }
 
 struct Sphere {
@@ -181,8 +195,31 @@ int main(int argc, char* argv[])
 	float last_fps_time = glfwGetTime();
 	int frame_counter = 0;
 
+	auto was_just_pressed = [](int key_code) -> bool {
+		auto num_allocated_keys = sizeof(key_info) / sizeof(Key_info);
+		if (key_code >= num_allocated_keys) {
+			return false;
+		}
+		auto ret = key_info[key_code].is_pressed && !key_info[key_code].has_been_read;
+		key_info[key_code].has_been_read = true;
+		return ret;
+	};
+
 	while (!glfwWindowShouldClose(window))
 	{
+		if (was_just_pressed(GLFW_KEY_ESCAPE)) {
+			glfwSetWindowShouldClose(window, 1);
+			std::cout << "a" << std::endl;
+		}
+		if (was_just_pressed(GLFW_KEY_1)) {
+			shader = Shaders::funky;
+			std::cout << "b" << std::endl;
+		}
+		if (was_just_pressed(GLFW_KEY_2)) {
+			shader = Shaders::rays;
+			std::cout << "c" << std::endl;
+		}
+
 		float currentFrame = glfwGetTime();
 		deltaTime = currentFrame - lastFrame;
 		lastFrame = currentFrame;
