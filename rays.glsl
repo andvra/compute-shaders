@@ -79,6 +79,11 @@ Collision_info do_triangles(float min_distance, vec3 ray_start_pos, vec3 ray) {
 		vec3 p0 = (current_vertices[0] + current_vertices[1] + current_vertices[2]) / 3.0f;
 		vec3 l0 = ray_start_pos;
 		vec3 n = normalize(cross(current_vertices[1] - current_vertices[0], current_vertices[2] - current_vertices[1]));
+		if (abs(dot(n, ray)) < 0.001) {
+			// Plane and ray are parallel
+			continue;
+		}
+		
 		float d = dot(p0 - l0, n) / dot(ray, n);
 		vec3 plane_intersect_point = l0 + ray * d;
 
@@ -114,12 +119,7 @@ Collision_info do_triangles(float min_distance, vec3 ray_start_pos, vec3 ray) {
 				ret.collision_point = plane_intersect_point;
 				// https://math.stackexchange.com/questions/13261/how-to-get-a-reflection-vector
 				ret.collision_direction = ray - 2 * dot(ray, n) * n;
-			}
-			// This gives the nice flower effect
-			// NB this is possible not good to keep, it doesn't follow the structure above
-			if (abs(tot_angle - PI) < 0.01f) {
-				ret.pixel.color = vec4(1, 0, 1, 1);
-				ret.did_hit = true;
+				min_distance = distance_from_camera;
 			}
 		}
 	}
@@ -136,31 +136,18 @@ Collision_info do_spheres(float min_distance, vec3 ray_start_pos, vec3 ray, bool
 		float sphere_rad = spheres[i].r;
 		vec4 sphere_color = vec4(spheres[i].color[0], spheres[i].color[1], spheres[i].color[2], 1);
 		if (shared_data.host_idx_selected_sphere == i) {
-			sphere_color = vec4(0.5 * sphere_color.xyz + vec3(0.5, 0.5, 0.5), 1);
+			sphere_color = vec4(0.7 * sphere_color.xyz + 0.3 * sin(3*t) * vec3(1, 1, 1), 1);
 		}
-		float a = 1.0f;
-		float b = 2.0f * dot(ray, ray_start_pos - sphere_pos);
-		float c = dot(ray_start_pos - sphere_pos, ray_start_pos - sphere_pos) - sphere_rad * sphere_rad;
-		// f(x) = a*x^2 + b*x + c = 0
-		// ==> x^2 + (b/a)*x + c/a = 0
-		// ==> pq-formula
-		float p = b / a;
-		float q = c / a;
-		float root_inner = p * p / 4.0 - q;
-		if (root_inner > 0) {
-			// We have a collision
-			float root_sqrt = sqrt(root_inner);
-			float root_1 = -p / 2.0f + root_sqrt;
-			float root_2 = -p / 2.0f - root_sqrt;
-			float use_root = 0.0f;
-			if (root_1 > 0.0f) {
-				use_root = root_1;
-			}
-			if (root_2 > 0.0f && root_2 < use_root) {
-				use_root = root_2;
-			}
-			if (use_root != 0.0f) {
-				vec3 collision_point = vec3(ray_start_pos + use_root * ray);
+
+		vec3 oc = ray_start_pos - sphere_pos;
+		float a = dot(ray, ray);
+		float b = 2.f * dot(oc, ray);
+		float c = dot(oc, oc) - sphere_rad * sphere_rad;
+		float discriminant = b * b - 4 * a * c;
+		if (discriminant > 0) {
+			float t = (-b - sqrt(discriminant)) / (2.0 * a);
+			if (t > 0) {
+				vec3 collision_point = vec3(ray_start_pos + t * ray);
 				float the_distance = distance(collision_point, ray_start_pos);
 				if (the_distance < min_distance) {
 					vec3 v1 = collision_point - sphere_pos;
@@ -175,7 +162,8 @@ Collision_info do_spheres(float min_distance, vec3 ray_start_pos, vec3 ray, bool
 					ret.pixel.distance = the_distance;
 					ret.did_hit = true;
 					ret.collision_point = collision_point;
-					ret.collision_direction = collision_point - sphere_pos;
+					ret.collision_direction = normalize(collision_point - sphere_pos);
+					min_distance = the_distance;
 				}
 			}
 		}
@@ -212,6 +200,7 @@ void main()
 	vec3 render_screen_x = normalize(cross(the_focus, the_up));
 	vec3 render_screen_y = normalize(cross(render_screen_x, the_focus));
 
+	// TODO: Seems sphere collision is sorted. What about the triangles?
 	// TODO: Something's a bit fishy with the rays. See this for ray generation: https://viterbi-web.usc.edu/~jbarbic/cs420-s21/15-ray-tracing/15-ray-tracing.pdf
 	vec3 render_screen_pixel = the_camera + dist_to_render_screen * the_focus + (2 * render_screen_x * (float(texel_coord.x) / w - 0.5f)) + (2 * render_screen_y * (float(texel_coord.y) / h - 0.5f));
 	vec3 ray = normalize(render_screen_pixel - the_camera);
@@ -223,9 +212,10 @@ void main()
 	}
 
 	const float min_distance = 10000;
+	bg_color = vec4(0, 0, 0, 1);
 	Pixel_info pixel = Pixel_info(bg_color, min_distance);
 
-	const int max_bounces = 1;
+	const int max_bounces = 2;
 	vec4 bounce_color[max_bounces];
 	float bounce_reflectivity[max_bounces];	// 0 - 1
 	int actual_bounces = 0;
@@ -248,7 +238,8 @@ void main()
 				break;
 			}
 
-			if (collision_info[idx_type].did_hit) {
+			if (collision_info[idx_type].did_hit 
+					&& collision_info[idx_type].pixel.distance < cur_distance) {
 				cur_distance = collision_info[idx_type].pixel.distance;
 				best_collision_info = collision_info[idx_type];
 			}
