@@ -277,7 +277,7 @@ int main(int argc, char* argv[])
 		if (key_is_pressed(GLFW_KEY_D)) {
 			the_camera += glm::normalize(glm::cross(the_focus, glm::vec3(0, 1, 0))) * deltaTime * 5.0f;
 		}
-		if (!mouse_move_info.has_been_read) {
+		if (shader == Shaders::rays && !mouse_move_info.has_been_read) {
 			angle_alpha += (mouse_move_info.old_x - mouse_move_info.new_x) * deltaTime * 10.0f;
 			if (angle_alpha < 0) {
 				angle_alpha += 2 * std::numbers::pi;

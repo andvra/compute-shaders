@@ -86,6 +86,9 @@ Collision_info do_triangles(float min_distance, vec3 ray_start_pos, vec3 ray) {
 		
 		float d = dot(p0 - l0, n) / dot(ray, n);
 		vec3 plane_intersect_point = l0 + ray * d;
+		if (d < 0) {
+			continue;
+		}
 
 		float distance_from_camera = distance(plane_intersect_point, ray_start_pos);
 		if (distance_from_camera < min_distance) {
@@ -212,7 +215,7 @@ void main()
 	}
 
 	const float min_distance = 10000;
-	bg_color = vec4(0, 0, 0, 1);
+	bg_color = vec4(0.6, 0.5, 0.5, 1);
 	Pixel_info pixel = Pixel_info(bg_color, min_distance);
 
 	const int max_bounces = 2;
