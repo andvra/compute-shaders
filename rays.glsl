@@ -70,59 +70,70 @@ Collision_info do_triangles(float min_distance, vec3 ray_start_pos, vec3 ray) {
 	Collision_info ret;
 	ret.did_hit = false;
 
+	// See https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
+
 	for (int idx_triangle = 0; idx_triangle < num_triangles; idx_triangle++) {
-		vec3 current_vertices[3];
 		ivec3 current_triangle = the_triangles[idx_triangle];
-		current_vertices[0] = the_vertices[current_triangle.x];
-		current_vertices[1] = the_vertices[current_triangle.y];
-		current_vertices[2] = the_vertices[current_triangle.z];
-		vec3 p0 = (current_vertices[0] + current_vertices[1] + current_vertices[2]) / 3.0f;
-		vec3 l0 = ray_start_pos;
-		vec3 n = normalize(cross(current_vertices[1] - current_vertices[0], current_vertices[2] - current_vertices[1]));
-		if (abs(dot(n, ray)) < 0.001) {
-			// Plane and ray are parallel
-			continue;
+		const float EPSILON = 0.00001;
+		vec3 vertex0 = the_vertices[current_triangle.x];
+		vec3 vertex1 = the_vertices[current_triangle.y];
+		vec3 vertex2 = the_vertices[current_triangle.z];
+
+		vec3 edge1 = vertex1 - vertex0;
+		vec3 edge2 = vertex2 - vertex0;
+		vec3 h = cross(ray, edge2);
+		float a = dot(edge1, h);
+
+		if (a > -EPSILON && a < EPSILON) {
+			continue; // This ray is parallel to this triangle.
 		}
-		
-		float d = dot(p0 - l0, n) / dot(ray, n);
-		vec3 plane_intersect_point = l0 + ray * d;
-		if (d < 0) {
+
+		float f = 1.0 / a;
+		vec3 s = ray_start_pos - vertex0;
+		float u = f * dot(s, h);
+
+		if (u < 0.0 || u > 1.0) {
 			continue;
 		}
 
-		float distance_from_camera = distance(plane_intersect_point, ray_start_pos);
-		if (distance_from_camera < min_distance) {
-			float tot_angle = 0.0f;
-			for (int idx_sub_triangle = 0; idx_sub_triangle < 3; idx_sub_triangle++) {
-				vec3 v1 = normalize(current_vertices[(0 + idx_sub_triangle) % 3] - plane_intersect_point);
-				vec3 v2 = normalize(current_vertices[(1 + idx_sub_triangle) % 3] - plane_intersect_point);
-				float dot_res = min(1.0, dot(v1, v2));
-				tot_angle += acos(dot_res);
+		vec3 q = cross(s, edge1);
+		float v = f * dot(ray, q);
+
+		if (v < 0.0 || u + v > 1.0) {
+			continue;
+		}
+
+		// At this stage we can compute t to find out where the intersection point is on the line.
+		float tt = f * dot(edge2, q);
+
+		if (tt > EPSILON) // ray intersection
+		{
+			vec3 intersection_point = ray_start_pos + ray * tt;
+			float distance_from_camera = distance(intersection_point, the_camera);
+			ret.pixel.color = vec4(1, 1, 1, 1);
+			ret.pixel.distance = distance_from_camera;
+			ret.did_hit = true;
+			ret.collision_point = intersection_point;
+			// https://math.stackexchange.com/questions/13261/how-to-get-a-reflection-vector
+			vec3 n = cross(edge1, edge2);
+			ret.collision_direction = normalize(ray - 2 * dot(ray, n) * n);
+			min_distance = distance_from_camera;
+
+			vec4 pixel_color_side_one = vec4(0.8, 0.2, 0.05, 1);
+			vec4 pixel_color_side_two = vec4(0.9, 0.4, 0.7, 1);
+			vec4 pixel_color_band = vec4(1, 1, 1, 1);
+			float sin_val = sin(10.0f * (intersection_point.z / 10.0f + t));
+			ret.pixel.color = pixel_color_side_one;
+			float band_width = 1.0f;
+			if (sin_val < intersection_point.x) {
+				ret.pixel.color = pixel_color_side_two;
 			}
-			// Are we inside the triangle?
-			if (abs(tot_angle - 2 * PI) < 0.01f) {
-				vec4 pixel_color_side_one = vec4(0.8, 0.2, 0.05, 1);
-				vec4 pixel_color_side_two = vec4(0.9, 0.4, 0.7, 1);
-				vec4 pixel_color_band = vec4(1, 1, 1, 1);
-				float sin_val = sin(10.0f * (plane_intersect_point.z / 10.0f + t));
-				ret.pixel.color = pixel_color_side_one;
-				float band_width = 1.0f;
-				if (sin_val < plane_intersect_point.x) {
-					ret.pixel.color = pixel_color_side_two;
-				}
-				else if (sin_val < plane_intersect_point.x + band_width) {
-					float mix_factor = (sin_val - plane_intersect_point.x) / band_width; // 0 <= mix_factor <= 1
-					ret.pixel.color = mix_factor * pixel_color_side_one + (1.0f - mix_factor) * pixel_color_side_two;
-					float mix_factor2 = 0.15f * (sin(5 * t) + 1.0f) + 0.7f;
-					ret.pixel.color = mix_factor2 * ret.pixel.color + (1 - mix_factor2) * pixel_color_band;
+			else if (sin_val < intersection_point.x + band_width) {
+				float mix_factor = (sin_val - intersection_point.x) / band_width; // 0 <= mix_factor <= 1
+				ret.pixel.color = mix_factor * pixel_color_side_one + (1.0f - mix_factor) * pixel_color_side_two;
+				float mix_factor2 = 0.15f * (sin(5 * t) + 1.0f) + 0.7f;
+				ret.pixel.color = mix_factor2 * ret.pixel.color + (1 - mix_factor2) * pixel_color_band;
 
-				}
-				ret.pixel.distance = distance_from_camera;
-				ret.did_hit = true;
-				ret.collision_point = plane_intersect_point;
-				// https://math.stackexchange.com/questions/13261/how-to-get-a-reflection-vector
-				ret.collision_direction = ray - 2 * dot(ray, n) * n;
-				min_distance = distance_from_camera;
 			}
 		}
 	}
@@ -139,7 +150,7 @@ Collision_info do_spheres(float min_distance, vec3 ray_start_pos, vec3 ray, bool
 		float sphere_rad = spheres[i].r;
 		vec4 sphere_color = vec4(spheres[i].color[0], spheres[i].color[1], spheres[i].color[2], 1);
 		if (shared_data.host_idx_selected_sphere == i) {
-			sphere_color = vec4(0.7 * sphere_color.xyz + 0.3 * sin(3*t) * vec3(1, 1, 1), 1);
+			sphere_color = vec4(0.7 * sphere_color.xyz + 0.3 * sin(3 * t) * vec3(1, 1, 1), 1);
 		}
 
 		vec3 oc = ray_start_pos - sphere_pos;
@@ -190,7 +201,6 @@ void main()
 	float dist_to_render_screen = 1.0f / tan(radians(fov_h / 2.0f));
 
 	the_up = vec3(0, 1, 0);
-	bg_color = vec4(0.4, 0.3, 0.5 + 0.3 * sin(5.0 * t + texel_coord.x / 300.0f), 1);
 
 	the_vertices[0] = vec3(-10, 0, -10);
 	the_vertices[1] = vec3(-10, 0, 10);
@@ -203,7 +213,6 @@ void main()
 	vec3 render_screen_x = normalize(cross(the_focus, the_up));
 	vec3 render_screen_y = normalize(cross(render_screen_x, the_focus));
 
-	// TODO: Seems sphere collision is sorted. What about the triangles?
 	// TODO: Something's a bit fishy with the rays. See this for ray generation: https://viterbi-web.usc.edu/~jbarbic/cs420-s21/15-ray-tracing/15-ray-tracing.pdf
 	vec3 render_screen_pixel = the_camera + dist_to_render_screen * the_focus + (2 * render_screen_x * (float(texel_coord.x) / w - 0.5f)) + (2 * render_screen_y * (float(texel_coord.y) / h - 0.5f));
 	vec3 ray = normalize(render_screen_pixel - the_camera);
@@ -218,7 +227,7 @@ void main()
 	bg_color = vec4(0.6, 0.5, 0.5, 1);
 	Pixel_info pixel = Pixel_info(bg_color, min_distance);
 
-	const int max_bounces = 2;
+	const int max_bounces = 3;
 	vec4 bounce_color[max_bounces];
 	float bounce_reflectivity[max_bounces];	// 0 - 1
 	int actual_bounces = 0;
@@ -252,7 +261,7 @@ void main()
 			// We hit something
 			bounce_color[idx_bounce] = best_collision_info.pixel.color;
 			bounce_reflectivity[idx_bounce] = 0.5; // TODO: 50% reflectivity for now. Make this dynamic
-			ray = best_collision_info.collision_direction;
+			ray = normalize(best_collision_info.collision_direction);
 			start_pos = best_collision_info.collision_point;
 		}
 		else {
