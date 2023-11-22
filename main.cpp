@@ -1,6 +1,7 @@
 ﻿#include <iostream>
 #include <numbers>
 #include <vector>
+#include <filesystem>
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -11,7 +12,6 @@
 
 #include "shader_m.h"
 #include "shader_c.h"
-#include "camera.h"
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void renderQuad();
@@ -145,10 +145,21 @@ int main(int argc, char* argv[])
 
 	std::cout << "Number of invocations in a single local work group that may be dispatched to a compute shader " << max_compute_work_group_invocations << std::endl;
 
-	Shader screenQuad(R"(D:\work\compute_shaders\screenQuad.vs)", R"(D:\work\compute_shaders\screenQuad.fs)");
-	ComputeShader computeShader(R"(D:\work\compute_shaders\computeShader.glsl)");
-	ComputeShader solver(R"(D:\work\compute_shaders\solver.glsl)");
-	ComputeShader rays(R"(D:\work\compute_shaders\rays.glsl)");
+	std::filesystem::path root_folder(R"(D:\work\compute_shaders)");
+	if (!std::filesystem::exists(root_folder)) {
+		std::cerr << "Could not find folder " << root_folder.string() << std::endl;
+		return 1;
+	}
+
+	auto vertex_shader_path = (root_folder / "screenQuad.vs").string();
+	auto fragment_shader_path = (root_folder / "screenQuad.fs").string();
+	auto initial_shader_path = (root_folder / "computeShader.glsl").string();
+	auto solver_path = (root_folder / "solver.glsl").string();
+	auto rays_path = (root_folder / "rays.glsl").string();
+	Shader screenQuad(vertex_shader_path.c_str(), fragment_shader_path.c_str());
+	ComputeShader initial_shader(initial_shader_path.c_str());
+	ComputeShader solver(solver_path.c_str());
+	ComputeShader rays(rays_path.c_str());
 
 	screenQuad.use();
 	screenQuad.setInt("tex", 0);
@@ -308,10 +319,10 @@ int main(int argc, char* argv[])
 
 		switch (shader) {
 		case Shaders::funky:
-			computeShader.use();
-			computeShader.setFloat("t", currentFrame);
-			computeShader.setVec2("mouse_pos", glm::vec2(xpos, ypos));
-			computeShader.setVec2("background_center", background_center);
+			initial_shader.use();
+			initial_shader.setFloat("t", currentFrame);
+			initial_shader.setVec2("mouse_pos", glm::vec2(xpos, ypos));
+			initial_shader.setVec2("background_center", background_center);
 			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
 			// make sure writing to image has finished before read
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
@@ -359,7 +370,8 @@ int main(int argc, char* argv[])
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0); // unbind
 	glDeleteTextures(1, &texture);
 	glDeleteProgram(screenQuad.ID);
-	glDeleteProgram(computeShader.ID);
+	glDeleteProgram(initial_shader.ID);
+	glDeleteProgram(rays.ID);
 
 	glfwTerminate();
 
