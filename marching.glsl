@@ -32,7 +32,7 @@ void main()
             pixel_color = vec4(0, 0, 0, 1);
             min_d = 0;
         }
-        if (outer_d > 0.0f && outer_d < min_d && outer_d < 10000){
+        if (outer_d > 0.0f && outer_d < min_d && outer_d < 100){
             min_d = outer_d;
             vec3 the_color = vec3(circles[i].color[0], circles[i].color[1], circles[i].color[2]);
             pixel_color = vec4(the_color, 1);
