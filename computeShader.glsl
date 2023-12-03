@@ -28,8 +28,13 @@ vec4 draw_crosshair(vec2 texel_coord, vec4 pixel_color)
 
 void main()
 {
-    vec4 pixel_color = vec4(0, 0, 0, 1);
     ivec2 texel_coord = ivec2(gl_GlobalInvocationID.xy);
+
+    if (texel_coord.x > w || texel_coord.y > h) {
+        return;
+    }
+
+    vec4 pixel_color = vec4(0, 0, 0, 1);
 
     float d1 = distance(texel_coord, ivec2(background_center.x + 10 * sin(t), background_center.y + 15 * cos(t)));
     float d2 = distance(texel_coord, ivec2(mouse_pos.x + 100 * sin(t + 0.2), h - mouse_pos.y + 60 * cos(t + 0.5)));

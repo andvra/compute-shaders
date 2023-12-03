@@ -28,7 +28,7 @@ float deltaTime = 0.0f; // time between current frame and last frame
 float lastFrame = 0.0f; // time of last frame
 
 auto background_center = glm::vec2(500, 500);
-enum class Shaders { funky, rays };
+enum class Shaders { funky, rays, marching };
 Shaders shader = Shaders::funky;
 
 struct Key_info {
@@ -44,16 +44,33 @@ struct Mouse_move_info {
 	bool has_been_read;
 };
 
+struct Mouse_button_info {
+	bool is_pressed;
+	bool has_been_read;
+};
+
 Key_info key_info[512] = {}; // GLFW_KEY_ESCAPE is 256 for some reason
+Mouse_button_info mouse_button_info[2] = {};
 Mouse_move_info mouse_move_info = {};
 
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 {
-	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-		double xpos, ypos;
-		glfwGetCursorPos(window, &xpos, &ypos);
-		background_center.x = xpos;
-		background_center.y = SCR_HEIGHT - ypos;
+	enum class Mouse_actions { up, down };
+
+	auto num_allocated_buttons = sizeof(mouse_button_info) / sizeof(Mouse_button_info);
+
+	if (button >= num_allocated_buttons) {
+		return;
+	}
+
+	switch ((Mouse_actions)action) {
+	case Mouse_actions::down:
+		mouse_button_info[button].is_pressed = true;
+		mouse_button_info[button].has_been_read = false;
+		break;
+	case Mouse_actions::up:
+		mouse_button_info[button].is_pressed = false;
+		break;
 	}
 }
 
@@ -81,11 +98,16 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 		key_info[key].is_pressed = false;
 		break;
 	}
-
 }
 
 struct Sphere {
 	float position[3];
+	float r;
+	float color[3];
+};
+
+struct Circle {
+	float pos[2];
 	float r;
 	float color[3];
 };
@@ -156,10 +178,12 @@ int main(int argc, char* argv[])
 	auto initial_shader_path = (root_folder / "computeShader.glsl").string();
 	auto solver_path = (root_folder / "solver.glsl").string();
 	auto rays_path = (root_folder / "rays.glsl").string();
+	auto marching_path = (root_folder / "marching.glsl").string();
 	Shader screenQuad(vertex_shader_path.c_str(), fragment_shader_path.c_str());
 	ComputeShader initial_shader(initial_shader_path.c_str());
 	ComputeShader solver(solver_path.c_str());
 	ComputeShader rays(rays_path.c_str());
+	ComputeShader marching(marching_path.c_str());
 
 	screenQuad.use();
 	screenQuad.setInt("tex", 0);
@@ -210,6 +234,26 @@ int main(int argc, char* argv[])
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_shared_data);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Shared_data) * 1, (const void*)&shared_data, GL_DYNAMIC_DRAW);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo_shared_data);
+
+	std::vector<Circle> circles = {
+		{100,	100,	30,	0.8f,	0.1f,	0.2f},
+		{300,	500,	20,	0.2f,	0.8f,	0.2f},
+		{500,	530,	70,	0.2f,	0.8f,	0.9f},
+		{50,	500,	70,	0.2f,	0.4f,	0.2f},
+		{800,	340,	90,	0.7f,	0.3f,	0.3f}
+	};
+	circles.clear();
+	for (int i = 0; i < 200; i++) {
+		Circle c = { 100 + std::rand() % (SCR_WIDTH-200), 100 + std::rand() % (SCR_HEIGHT-200), 5, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f };
+		circles.push_back(c);
+	}
+	GLuint ssbo_circles;
+	glGenBuffers(1, &ssbo_circles);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_circles);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * circles.size(), (const void*)circles.data(), GL_DYNAMIC_DRAW);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo_circles);
+	int idx_active_circle = -1;
+	float original_circle_pos[] = { 0,0 };
 
 	glfwSetMouseButtonCallback(window, mouse_button_callback);
 	glfwSetKeyCallback(window, key_callback);
@@ -277,6 +321,9 @@ int main(int argc, char* argv[])
 		if (key_was_just_pressed(GLFW_KEY_2)) {
 			shader = Shaders::rays;
 		}
+		if (key_was_just_pressed(GLFW_KEY_3)) {
+			shader = Shaders::marching;
+		}
 		if (key_is_pressed(GLFW_KEY_W)) {
 			the_camera += the_focus * deltaTime * 5.0f;
 		}
@@ -296,14 +343,15 @@ int main(int argc, char* argv[])
 			the_camera -= glm::vec3(0, 1, 0) * deltaTime * 5.0f;
 		}
 		if (shader == Shaders::rays && !mouse_move_info.has_been_read) {
-			angle_alpha += (mouse_move_info.old_x - mouse_move_info.new_x) * deltaTime * 10.0f;
+			float move_factor = 1.0f;
+			angle_alpha += (mouse_move_info.old_x - mouse_move_info.new_x) * deltaTime * move_factor;
 			if (angle_alpha < 0) {
 				angle_alpha += 2 * std::numbers::pi;
 			}
 			if (angle_alpha > 2 * std::numbers::pi) {
 				angle_alpha -= 2 * std::numbers::pi;
 			}
-			angle_beta += (mouse_move_info.old_y - mouse_move_info.new_y) * deltaTime * 10.0f;
+			angle_beta += (mouse_move_info.old_y - mouse_move_info.new_y) * deltaTime * move_factor;
 			if (angle_beta <= -std::numbers::pi / 2) {
 				angle_beta = -std::numbers::pi / 2 + 0.00001f;
 			}
@@ -312,6 +360,42 @@ int main(int argc, char* argv[])
 			}
 			mouse_move_info.has_been_read = true;
 			glfwSetCursorPos(window, SCR_WIDTH / 2, SCR_HEIGHT / 2);
+		}
+		if (shader == Shaders::funky) {
+			if (!mouse_button_info[0].has_been_read && mouse_button_info[0].is_pressed) {
+				double xpos, ypos;
+				glfwGetCursorPos(window, &xpos, &ypos);
+				background_center.x = xpos;
+				background_center.y = SCR_HEIGHT - ypos;
+				mouse_button_info[0].has_been_read = true;
+			}
+		}
+		if (shader == Shaders::marching && !mouse_button_info[0].has_been_read && mouse_button_info[0].is_pressed) {
+			double xpos, ypos;
+			glfwGetCursorPos(window, &xpos, &ypos);
+			auto y_fixed = SCR_HEIGHT - ypos;
+			for (int i = 0; i < circles.size(); i++) {
+				auto d_square = (xpos - circles[i].pos[0]) * (xpos - circles[i].pos[0]) + (y_fixed - circles[i].pos[1]) * (y_fixed - circles[i].pos[1]);
+				auto r_square = circles[i].r * circles[i].r;
+				if (d_square < r_square) {
+					idx_active_circle = i;
+					original_circle_pos[0] = circles[i].pos[0];
+					original_circle_pos[1] = circles[i].pos[1];
+				}
+			}
+			mouse_button_info[0].has_been_read = true;
+		}
+		if (shader == Shaders::marching && mouse_button_info[0].is_pressed && idx_active_circle > -1) {
+			double xpos, ypos;
+			glfwGetCursorPos(window, &xpos, &ypos);
+			auto y_fixed = SCR_HEIGHT - ypos;
+			circles[idx_active_circle].pos[0] = xpos;
+			circles[idx_active_circle].pos[1] = y_fixed;
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_circles);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * idx_active_circle, sizeof(Circle), &circles[idx_active_circle]);
+		}
+		if (shader == Shaders::marching && !mouse_button_info[0].is_pressed) {
+			idx_active_circle = -1;
 		}
 
 		double xpos, ypos;
@@ -328,23 +412,35 @@ int main(int argc, char* argv[])
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 			break;
 		case Shaders::rays:
-			rays.use();
-			rays.setFloat("t", currentFrame);
-			rays.setVec2("mouse_pos", glm::vec2(xpos, ypos));
-			rays.setVec2("background_center", background_center);
-			the_focus.x = std::sin(angle_alpha) * std::cos(angle_beta);
-			the_focus.y = std::sin(angle_beta);
-			the_focus.z = std::cos(angle_alpha) * std::cos(angle_beta);
-			the_focus /= glm::length(the_focus);
-			rays.setVec3("the_focus", the_focus);
-			rays.setVec3("the_camera", the_camera);
+			{
+				rays.use();
+				rays.setFloat("t", currentFrame);
+				rays.setVec2("mouse_pos", glm::vec2(xpos, ypos));
+				the_focus.x = std::sin(angle_alpha) * std::cos(angle_beta);
+				the_focus.y = std::sin(angle_beta);
+				the_focus.z = std::cos(angle_alpha) * std::cos(angle_beta);
+				the_focus /= glm::length(the_focus);
+				rays.setVec3("the_focus", the_focus);
+				rays.setVec3("the_camera", the_camera);
+				glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+				Shared_data ss{};
+				glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_shared_data);
+				glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(Shared_data), &ss);
+				ss.host_idx_selected_sphere = ss.device_idx_selected_sphere;
+				ss.device_idx_selected_sphere = -1;
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(Shared_data), &ss);
+			}
+			break;
+		case Shaders::marching:
+			marching.use();
+			//glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_circles);
+			//if (idx_active_circle > -1) {
+			//	circles[idx_active_circle].pos[0] = original_circle_pos[0] + 100 * sin(currentFrame);
+			//	glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * idx_active_circle, sizeof(Circle), &circles[idx_active_circle]);
+			//}
 			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
-			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
-			Shared_data ss{};
-			glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(Shared_data), &ss);
-			ss.host_idx_selected_sphere = ss.device_idx_selected_sphere;
-			ss.device_idx_selected_sphere = -1;
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(Shared_data), &ss);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 			break;
 		}
 

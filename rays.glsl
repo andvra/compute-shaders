@@ -15,7 +15,6 @@ layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 layout(rgba32f, binding = 0) uniform image2D imgOutput;
 layout(location = 0) uniform float t;
 layout(location = 1) uniform vec2 mouse_pos;
-layout(location = 2) uniform vec2 background_center;
 layout(location = 3) uniform vec3 the_camera;
 layout(location = 4) uniform vec3 the_focus;
 
@@ -189,6 +188,11 @@ Collision_info do_spheres(float min_distance, vec3 ray_start_pos, vec3 ray, bool
 void main()
 {
 	ivec2 texel_coord = ivec2(gl_GlobalInvocationID.xy);
+
+	if (texel_coord.x > w || texel_coord.y > h) {
+		return;
+	}
+
 	vec3 the_up;
 	vec4 bg_color;
 
