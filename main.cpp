@@ -240,37 +240,34 @@ int main(int argc, char* argv[])
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Shared_data) * 1, (const void*)&shared_data, GL_DYNAMIC_DRAW);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo_shared_data);
 
-	std::vector<Circle> circles = {
-		{100,	100,	30,	0.8f,	0.1f,	0.2f},
-		{300,	500,	20,	0.2f,	0.8f,	0.2f},
-		{500,	530,	70,	0.2f,	0.8f,	0.9f},
-		{50,	500,	70,	0.2f,	0.4f,	0.2f},
-		{800,	340,	90,	0.7f,	0.3f,	0.3f}
-	};
-	circles.clear();
-	for (int i = 0; i < 200; i++) {
-		Circle c = { 100 + std::rand() % (SCR_WIDTH-200), 100 + std::rand() % (SCR_HEIGHT-200), 5, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f };
-		circles.push_back(c);
-	}
-	GLuint ssbo_circles;
-	glGenBuffers(1, &ssbo_circles);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_circles);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * circles.size(), (const void*)circles.data(), GL_DYNAMIC_DRAW);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssbo_circles);
-	int block_size = 100;
+	std::vector<Circle> circles(200);
 	std::vector<Block_id> block_ids(circles.size());
-	for (int i = 0; i < block_ids.size(); i++) {
-		block_ids[i] = { (int)circles[i].pos[0] / block_size, (int)circles[i].pos[1] / block_size };
-	}
+	int block_size = 100;
+	GLuint ssbo_circles;
 	GLuint ssbo_block_ids;
-	glGenBuffers(1, &ssbo_block_ids);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_block_ids);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Block_id) * block_ids.size(), (const void*)block_ids.data(), GL_DYNAMIC_DRAW);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, ssbo_block_ids);
-	marching.use();
-	marching.setInt("block_size", block_size);
-
 	int idx_active_circle = -1;
+	{
+		for (int i = 0; i < circles.size(); i++) {
+			Circle c = { 100 + std::rand() % (SCR_WIDTH - 200), 100 + std::rand() % (SCR_HEIGHT - 200), 5, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f };
+			circles[i] = c;
+		}
+
+		glGenBuffers(1, &ssbo_circles);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_circles);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * circles.size(), (const void*)circles.data(), GL_DYNAMIC_DRAW);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssbo_circles);
+
+		for (int i = 0; i < block_ids.size(); i++) {
+			block_ids[i] = { (int)circles[i].pos[0] / block_size, (int)circles[i].pos[1] / block_size };
+		}
+
+		glGenBuffers(1, &ssbo_block_ids);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_block_ids);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Block_id) * block_ids.size(), (const void*)block_ids.data(), GL_DYNAMIC_DRAW);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, ssbo_block_ids);
+		marching.use();
+		marching.setInt("block_size", block_size);
+	}
 
 	glfwSetMouseButtonCallback(window, mouse_button_callback);
 	glfwSetKeyCallback(window, key_callback);
