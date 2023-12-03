@@ -28,7 +28,7 @@ float deltaTime = 0.0f; // time between current frame and last frame
 float lastFrame = 0.0f; // time of last frame
 
 auto background_center = glm::vec2(500, 500);
-enum class Shaders { funky, rays, marching };
+enum class Shaders { funky, rays, marching, solver };
 Shaders shader = Shaders::funky;
 
 struct Key_info {
@@ -209,16 +209,16 @@ int main(int argc, char* argv[])
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, texture);
 
-	int data[1000];
+	std::vector<int> data(1000);
 
-	for (int i = 0; i < 1000; i++) {
+	for (int i = 0; i < data.size(); i++) {
 		data[i] = i;
 	}
 
 	GLuint ssbo_solver;
 	glGenBuffers(1, &ssbo_solver);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_solver);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(data), &data[0], GL_DYNAMIC_READ);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(int) * data.size(), data.data(), GL_DYNAMIC_READ);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo_solver);
 
 	std::vector<Sphere> spheres = {	// x y z rad r g b
@@ -449,23 +449,19 @@ int main(int argc, char* argv[])
 			break;
 		case Shaders::marching:
 			marching.use();
-			//glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_circles);
-			//if (idx_active_circle > -1) {
-			//	circles[idx_active_circle].pos[0] = original_circle_pos[0] + 100 * sin(currentFrame);
-			//	glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * idx_active_circle, sizeof(Circle), &circles[idx_active_circle]);
-			//}
 			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 			break;
+		case Shaders::solver:
+			solver.use();
+			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+			int result_int;
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_solver);
+			// Here, we take the 10th int to verify results
+			glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(int) * 10, sizeof(int), &result_int);
+			break;
 		}
-
-		solver.use();
-		glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
-		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-		// These three lines maps device to host memory!
-		int* vals = (int*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_ONLY);
-		int first_int = vals[5];
-		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 
 		// render image to quad
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
