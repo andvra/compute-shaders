@@ -112,6 +112,11 @@ struct Circle {
 	float color[3];
 };
 
+struct Block_id {
+	int x;
+	int y;
+};
+
 struct Shared_data {
 	int host_idx_selected_sphere;
 	int device_idx_selected_sphere;
@@ -214,7 +219,7 @@ int main(int argc, char* argv[])
 	glGenBuffers(1, &ssbo_solver);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_solver);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(data), &data[0], GL_DYNAMIC_READ);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssbo_solver);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo_solver);
 
 	std::vector<Sphere> spheres = {	// x y z rad r g b
 		{10, 2,   1, 1, 1, 0, 0},
@@ -226,14 +231,14 @@ int main(int argc, char* argv[])
 	glGenBuffers(1, &ssbo_spheres);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_spheres);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Sphere) * spheres.size(), (const void*)spheres.data(), GL_DYNAMIC_DRAW);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo_spheres);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo_spheres);
 
 	Shared_data shared_data = { -1, -1 };
 	GLuint ssbo_shared_data;
 	glGenBuffers(1, &ssbo_shared_data);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_shared_data);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Shared_data) * 1, (const void*)&shared_data, GL_DYNAMIC_DRAW);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo_shared_data);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo_shared_data);
 
 	std::vector<Circle> circles = {
 		{100,	100,	30,	0.8f,	0.1f,	0.2f},
@@ -251,9 +256,21 @@ int main(int argc, char* argv[])
 	glGenBuffers(1, &ssbo_circles);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_circles);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * circles.size(), (const void*)circles.data(), GL_DYNAMIC_DRAW);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo_circles);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssbo_circles);
+	int block_size = 100;
+	std::vector<Block_id> block_ids(circles.size());
+	for (int i = 0; i < block_ids.size(); i++) {
+		block_ids[i] = { (int)circles[i].pos[0] / block_size, (int)circles[i].pos[1] / block_size };
+	}
+	GLuint ssbo_block_ids;
+	glGenBuffers(1, &ssbo_block_ids);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_block_ids);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Block_id) * block_ids.size(), (const void*)block_ids.data(), GL_DYNAMIC_DRAW);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, ssbo_block_ids);
+	marching.use();
+	marching.setInt("block_size", block_size);
+
 	int idx_active_circle = -1;
-	float original_circle_pos[] = { 0,0 };
 
 	glfwSetMouseButtonCallback(window, mouse_button_callback);
 	glfwSetKeyCallback(window, key_callback);
@@ -379,8 +396,6 @@ int main(int argc, char* argv[])
 				auto r_square = circles[i].r * circles[i].r;
 				if (d_square < r_square) {
 					idx_active_circle = i;
-					original_circle_pos[0] = circles[i].pos[0];
-					original_circle_pos[1] = circles[i].pos[1];
 				}
 			}
 			mouse_button_info[0].has_been_read = true;
@@ -391,8 +406,11 @@ int main(int argc, char* argv[])
 			auto y_fixed = SCR_HEIGHT - ypos;
 			circles[idx_active_circle].pos[0] = xpos;
 			circles[idx_active_circle].pos[1] = y_fixed;
+			block_ids[idx_active_circle] = {(int)xpos / block_size,(int)y_fixed / block_size };
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_circles);
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * idx_active_circle, sizeof(Circle), &circles[idx_active_circle]);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_block_ids);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Block_id) * idx_active_circle, sizeof(Block_id), &block_ids[idx_active_circle]);
 		}
 		if (shader == Shaders::marching && !mouse_button_info[0].is_pressed) {
 			idx_active_circle = -1;

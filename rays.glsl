@@ -18,11 +18,11 @@ layout(location = 1) uniform vec2 mouse_pos;
 layout(location = 3) uniform vec3 the_camera;
 layout(location = 4) uniform vec3 the_focus;
 
-layout(std430, binding = 0) buffer layout_spheres
+layout(std430, binding = 1) buffer layout_spheres
 {
 	Sphere spheres[];
 };
-layout(std430, binding = 1) buffer layout_shared_data
+layout(std430, binding = 2) buffer layout_shared_data
 {
 	Shared_data shared_data;
 };
