@@ -17,8 +17,8 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void renderQuad();
 
 // settings
-const unsigned int SCR_WIDTH = 1200;
-const unsigned int SCR_HEIGHT = 900;
+const unsigned int SCR_WIDTH = 1200*2;
+const unsigned int SCR_HEIGHT = 900*2;
 
 // texture size
 const unsigned int TEXTURE_WIDTH = SCR_WIDTH, TEXTURE_HEIGHT = SCR_HEIGHT;
@@ -240,9 +240,13 @@ int main(int argc, char* argv[])
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Shared_data) * 1, (const void*)&shared_data, GL_DYNAMIC_DRAW);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo_shared_data);
 
+	rays.use();
+	rays.setInt("w", SCR_WIDTH);
+	rays.setInt("h", SCR_HEIGHT);
+
 	std::vector<Circle> circles(200);
 	std::vector<Block_id> block_ids(circles.size());
-	int block_size = 100;
+	int block_size = 500;
 	GLuint ssbo_circles;
 	GLuint ssbo_block_ids;
 	int idx_active_circle = -1;
@@ -267,7 +271,13 @@ int main(int argc, char* argv[])
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, ssbo_block_ids);
 		marching.use();
 		marching.setInt("block_size", block_size);
+		marching.setInt("w", SCR_WIDTH);
+		marching.setInt("h", SCR_HEIGHT);
 	}
+
+	initial_shader.use();
+	initial_shader.setInt("w", SCR_WIDTH);
+	initial_shader.setInt("h", SCR_HEIGHT);
 
 	glfwSetMouseButtonCallback(window, mouse_button_callback);
 	glfwSetKeyCallback(window, key_callback);
@@ -312,7 +322,14 @@ int main(int argc, char* argv[])
 	mouse_move_info.new_y = SCR_HEIGHT / 2;
 	mouse_move_info.old_x = SCR_WIDTH / 2;
 	mouse_move_info.old_y = SCR_HEIGHT / 2;
-	 
+	
+	int idx_dest = -1;
+	int idx_src = -1;
+	float t_move_start = 0;
+	float t_move_end = 0;
+	float move_origin[2] = { 0,0 };
+	float move_vector[2] = { 0,0 };
+
 	while (!glfwWindowShouldClose(window))
 	{
 		float currentFrame = glfwGetTime();
@@ -411,6 +428,49 @@ int main(int argc, char* argv[])
 		}
 		if (shader == Shaders::marching && !mouse_button_info[0].is_pressed) {
 			idx_active_circle = -1;
+		}
+		if (shader == Shaders::marching) {
+			if (circles.size() >= 2) {
+				if (idx_src == -1) {
+					idx_src = std::rand() % circles.size();
+					// Setting t_move_end to zero will trigger a new destination
+					t_move_end = 0;
+				}
+				if (currentFrame > t_move_end) {
+					if (idx_dest != -1) {
+						// Don't move source circle when initializing the app
+						circles[idx_src].pos[0] = circles[idx_dest].pos[0];
+						circles[idx_src].pos[1] = circles[idx_dest].pos[1];
+						glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_circles);
+						glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * idx_src, sizeof(Circle), &circles[idx_src]);
+						glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_block_ids);
+						glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Block_id) * idx_src, sizeof(Block_id), &block_ids[idx_dest]);
+						idx_src = idx_dest;
+					}
+					while ((idx_dest = std::rand() % circles.size()) == idx_src);
+					auto x1 = circles[idx_dest].pos[0];
+					auto y1 = circles[idx_dest].pos[1];
+					auto x2 = circles[idx_src].pos[0];
+					auto y2 = circles[idx_src].pos[1];
+					float d = std::sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+					t_move_end = currentFrame + d * 0.005f;
+					t_move_start = currentFrame;
+					auto diff_x = circles[idx_dest].pos[0] - circles[idx_src].pos[0];
+					auto diff_y = circles[idx_dest].pos[1] - circles[idx_src].pos[1];
+					move_origin[0] = circles[idx_src].pos[0];
+					move_origin[1] = circles[idx_src].pos[1];
+					move_vector[0] = diff_x;
+					move_vector[1] = diff_y;
+				}
+				auto t = (currentFrame - t_move_start) / (t_move_end - t_move_start);
+				circles[idx_src].pos[0] = move_origin[0] + t * move_vector[0];
+				circles[idx_src].pos[1] = move_origin[1] + t * move_vector[1];
+				block_ids[idx_src] = { (int)circles[idx_src].pos[0] / block_size, (int)circles[idx_src].pos[1] / block_size };
+				glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_circles);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * idx_src, sizeof(Circle), &circles[idx_src]);
+				glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_block_ids);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Block_id) * idx_src, sizeof(Block_id), &block_ids[idx_src]);
+			}
 		}
 
 		double xpos, ypos;

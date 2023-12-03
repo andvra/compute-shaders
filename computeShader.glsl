@@ -5,9 +5,8 @@ layout(rgba32f, binding = 0) uniform image2D imgOutput;
 layout(location = 0) uniform float t;
 layout(location = 1) uniform vec2 mouse_pos;
 layout(location = 2) uniform vec2 background_center;
-
-const float w = 1200.0f;
-const float h = 900.0f;
+layout(location = 3) uniform int w;
+layout(location = 4) uniform int h;
 
 vec4 draw_crosshair(vec2 texel_coord, vec4 pixel_color)
 {

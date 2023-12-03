@@ -15,8 +15,10 @@ layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 layout(rgba32f, binding = 0) uniform image2D imgOutput;
 layout(location = 0) uniform float t;
 layout(location = 1) uniform vec2 mouse_pos;
-layout(location = 3) uniform vec3 the_camera;
-layout(location = 4) uniform vec3 the_focus;
+layout(location = 2) uniform vec3 the_camera;
+layout(location = 3) uniform vec3 the_focus;
+layout(location = 4) uniform int w;
+layout(location = 5) uniform int h;
 
 layout(std430, binding = 1) buffer layout_spheres
 {
@@ -33,8 +35,6 @@ const int num_triangles = 2;
 const int num_vertices = 4;
 vec3 the_vertices[num_vertices];
 ivec3 the_triangles[num_triangles];// Consist of indices of the_vertices
-const float w = 1200.0f;
-const float h = 900.0f;
 
 vec4 draw_crosshair(vec2 texel_coord, vec4 pixel_color)
 {

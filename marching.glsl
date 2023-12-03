@@ -14,6 +14,8 @@ struct Block_id {
 layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 layout(rgba32f, binding = 0) uniform image2D imgOutput;
 layout(location = 0) uniform int block_size;
+layout(location = 1) uniform int w;
+layout(location = 2) uniform int h;
 
 layout(std430, binding = 3) buffer layout_circles
 {
@@ -23,9 +25,6 @@ layout(std430, binding = 4) buffer layout_blocks
 {
     Block_id block_ids[];
 };
-
-const float w = 1200.0f;
-const float h = 900.0f;
 
 void main()
 {
@@ -51,7 +50,7 @@ void main()
                 pixel_color = vec4(0, 0, 0, 1);
                 min_d = 0;
             }
-            if (outer_d > 0.0f && outer_d < min_d && outer_d < 100) {
+            if ( outer_d < min_d && outer_d < 200) {
                 min_d = outer_d;
                 vec3 the_color = vec3(circles[i].color[0], circles[i].color[1], circles[i].color[2]);
                 pixel_color = vec4(the_color, 1);
