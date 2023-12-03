@@ -246,7 +246,7 @@ int main(int argc, char* argv[])
 
 	std::vector<Circle> circles(200);
 	std::vector<Block_id> block_ids(circles.size());
-	int block_size = 500;
+	int block_size = 200;
 	GLuint ssbo_circles;
 	GLuint ssbo_block_ids;
 	int idx_active_circle = -1;

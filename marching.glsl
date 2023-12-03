@@ -46,11 +46,11 @@ void main()
 		if (block_ids[i].x >= block_x_min && block_ids[i].x <= block_x_max && block_ids[i].y >= block_y_min && block_ids[i].y <= block_y_max) {
             float d = distance(texel_coord.xy, vec2(circles[i].pos[0], circles[i].pos[1]));
             float outer_d = d - circles[i].r;
-            if (outer_d < 0) {
+            if (outer_d < 0.0f) {
                 pixel_color = vec4(0, 0, 0, 1);
                 min_d = 0;
             }
-            if ( outer_d < min_d && outer_d < 200) {
+            if (outer_d > 0.0f && outer_d < min_d && outer_d < 200) {
                 min_d = outer_d;
                 vec3 the_color = vec3(circles[i].color[0], circles[i].color[1], circles[i].color[2]);
                 pixel_color = vec4(the_color, 1);
