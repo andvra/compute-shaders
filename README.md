@@ -1,5 +1,10 @@
 Toggle the shaders with key number 1-3
 
+
+## Requirements
+
+GLAD, GLM, GLFW
+
 ## Funky shader
 
 Click anywhere to move the origin of the outer circle
