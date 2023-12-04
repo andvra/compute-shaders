@@ -123,6 +123,13 @@ struct Shared_data {
 	int device_idx_selected_sphere;
 };
 
+struct Toolbar_info {
+	int x;
+	int y;
+	int w;
+	int h;
+};
+
 int main(int argc, char* argv[])
 {
 	glfwInit();
@@ -250,6 +257,8 @@ int main(int argc, char* argv[])
 	int block_size = 200;
 	GLuint ssbo_circles;
 	GLuint ssbo_block_ids;
+	GLuint ssbo_toolbar_info;
+	GLuint ssbo_toolbar_colors;
 	int idx_active_circle = -1;
 	{
 		for (int i = 0; i < circles.size(); i++) {
@@ -271,6 +280,26 @@ int main(int argc, char* argv[])
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_block_ids);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Block_id) * block_ids.size(), (const void*)block_ids.data(), GL_DYNAMIC_DRAW);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, ssbo_block_ids);
+
+		Toolbar_info toolbar_info = { .x = 100, .y = 300, .w = 300, .h = 500 };
+		// This is to flip the coordinate system so it works with GLSL
+		toolbar_info.y = SCR_HEIGHT - toolbar_info.y - toolbar_info.h;
+		glGenBuffers(1, &ssbo_toolbar_info);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_toolbar_info);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Toolbar_info) * 1, (const void*)&toolbar_info, GL_DYNAMIC_DRAW);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, ssbo_toolbar_info);
+
+		std::vector<float> toolbar_pixels(3 * toolbar_info.w * toolbar_info.h);
+		for (size_t i = 0; i < toolbar_pixels.size(); i += 3) {
+			toolbar_pixels[i + 0] = 0.4f;
+			toolbar_pixels[i + 1] = std::sin(i) * std::sin(i);
+			toolbar_pixels[i + 2] = (i % 1000) / 1000.0f;
+		}
+		glGenBuffers(1, &ssbo_toolbar_colors);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_toolbar_colors);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(float) * toolbar_pixels.size(), (const void*)toolbar_pixels.data(), GL_DYNAMIC_DRAW);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, ssbo_toolbar_colors);
+
 		marching.use();
 		marching.setInt("block_size", block_size);
 		marching.setInt("w", SCR_WIDTH);
