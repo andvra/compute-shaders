@@ -109,6 +109,7 @@ struct Sphere {
 struct Circle {
 	float pos[2];
 	float r;
+	float r_square;	// For faster GPU calculations
 	float color[3];
 };
 
@@ -252,7 +253,8 @@ int main(int argc, char* argv[])
 	int idx_active_circle = -1;
 	{
 		for (int i = 0; i < circles.size(); i++) {
-			Circle c = { 100 + std::rand() % (SCR_WIDTH - 200), 100 + std::rand() % (SCR_HEIGHT - 200), 5, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f };
+			Circle c = { 100 + std::rand() % (SCR_WIDTH - 200), 100 + std::rand() % (SCR_HEIGHT - 200), 5, 0, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f };
+			c.r_square = c.r * c.r;
 			circles[i] = c;
 		}
 
