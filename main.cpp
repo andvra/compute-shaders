@@ -254,12 +254,15 @@ int main(int argc, char* argv[])
 
 	std::vector<Circle> circles(200);
 	std::vector<Block_id> block_ids(circles.size());
+	Toolbar_info toolbar_info;
 	int block_size = 200;
 	GLuint ssbo_circles;
 	GLuint ssbo_block_ids;
 	GLuint ssbo_toolbar_info;
 	GLuint ssbo_toolbar_colors;
 	int idx_active_circle = -1;
+	bool moving_toolbar = false;
+	int toolbar_click_pos[2] = {};
 	{
 		for (int i = 0; i < circles.size(); i++) {
 			Circle c = { 100 + std::rand() % (SCR_WIDTH - 200), 100 + std::rand() % (SCR_HEIGHT - 200), 5, 0, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f };
@@ -281,7 +284,7 @@ int main(int argc, char* argv[])
 		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Block_id) * block_ids.size(), (const void*)block_ids.data(), GL_DYNAMIC_DRAW);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, ssbo_block_ids);
 
-		Toolbar_info toolbar_info = { .x = 100, .y = 300, .w = 300, .h = 500 };
+		toolbar_info = { .x = 100, .y = 300, .w = 300, .h = 500 };
 		// This is to flip the coordinate system so it works with GLSL
 		toolbar_info.y = SCR_HEIGHT - toolbar_info.y - toolbar_info.h;
 		glGenBuffers(1, &ssbo_toolbar_info);
@@ -290,7 +293,7 @@ int main(int argc, char* argv[])
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, ssbo_toolbar_info);
 
 		std::vector<float> toolbar_pixels(3 * toolbar_info.w * toolbar_info.h);
-		for (size_t i = 0; i < toolbar_pixels.size(); i += 3) {
+		for (size_t i = 3 * toolbar_info.w * 30; i < toolbar_pixels.size(); i += 3) {
 			toolbar_pixels[i + 0] = 0.4f;
 			toolbar_pixels[i + 1] = std::sin(i) * std::sin(i);
 			toolbar_pixels[i + 2] = (i % 1000) / 1000.0f;
@@ -436,11 +439,28 @@ int main(int argc, char* argv[])
 			double xpos, ypos;
 			glfwGetCursorPos(window, &xpos, &ypos);
 			auto y_fixed = SCR_HEIGHT - ypos;
-			for (int i = 0; i < circles.size(); i++) {
-				auto d_square = (xpos - circles[i].pos[0]) * (xpos - circles[i].pos[0]) + (y_fixed - circles[i].pos[1]) * (y_fixed - circles[i].pos[1]);
-				auto r_square = circles[i].r * circles[i].r;
-				if (d_square < r_square) {
-					idx_active_circle = i;
+
+			bool within_toolbar_x = (xpos >= toolbar_info.x && xpos < toolbar_info.x + toolbar_info.w);
+			bool within_toolbar_y = (y_fixed >= toolbar_info.y && y_fixed < toolbar_info.y + toolbar_info.h);
+
+			if (within_toolbar_x && within_toolbar_y) {
+				if (y_fixed - toolbar_info.y < 30) {
+					moving_toolbar = true;
+					toolbar_click_pos[0] = xpos - toolbar_info.x;
+					toolbar_click_pos[1] = y_fixed - toolbar_info.y;
+					// TODO: We pressed on the toolbar. React to that
+					// Create controls on the toolbar. Prioritise clicking: first the control, then the toolbar.
+					// Spinners would be nice
+				}
+
+			}
+			else {
+				for (int i = 0; i < circles.size(); i++) {
+					auto d_square = (xpos - circles[i].pos[0]) * (xpos - circles[i].pos[0]) + (y_fixed - circles[i].pos[1]) * (y_fixed - circles[i].pos[1]);
+					auto r_square = circles[i].r * circles[i].r;
+					if (d_square < r_square) {
+						idx_active_circle = i;
+					}
 				}
 			}
 			mouse_button_info[0].has_been_read = true;
@@ -457,8 +477,18 @@ int main(int argc, char* argv[])
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_block_ids);
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Block_id) * idx_active_circle, sizeof(Block_id), &block_ids[idx_active_circle]);
 		}
+		if (shader == Shaders::marching && mouse_button_info[0].is_pressed && moving_toolbar) {
+			double xpos, ypos;
+			glfwGetCursorPos(window, &xpos, &ypos);
+			auto y_fixed = SCR_HEIGHT - ypos;
+			toolbar_info.x = xpos - toolbar_click_pos[0];
+			toolbar_info.y = y_fixed - toolbar_click_pos[1];
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_toolbar_info);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(Toolbar_info), &toolbar_info);
+		}
 		if (shader == Shaders::marching && !mouse_button_info[0].is_pressed) {
 			idx_active_circle = -1;
+			moving_toolbar = false;
 		}
 		if (shader == Shaders::marching) {
 			if (circles.size() >= 2) {
