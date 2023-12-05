@@ -444,7 +444,7 @@ int main(int argc, char* argv[])
 			bool within_toolbar_y = (y_fixed >= toolbar_info.y && y_fixed < toolbar_info.y + toolbar_info.h);
 
 			if (within_toolbar_x && within_toolbar_y) {
-				if (y_fixed - toolbar_info.y < 30) {
+				if (y_fixed - toolbar_info.y > toolbar_info.h - 30) {
 					moving_toolbar = true;
 					toolbar_click_pos[0] = xpos - toolbar_info.x;
 					toolbar_click_pos[1] = y_fixed - toolbar_info.y;
