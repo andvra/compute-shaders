@@ -29,6 +29,8 @@ float lastFrame = 0.0f; // time of last frame
 
 auto background_center = glm::vec2(500, 500);
 enum class Shaders { funky, rays, marching, solver };
+enum class Toolbar_control_type { button, slider, knob };
+
 Shaders shader = Shaders::funky;
 
 struct Key_info {
@@ -47,6 +49,48 @@ struct Mouse_move_info {
 struct Mouse_button_info {
 	bool is_pressed;
 	bool has_been_read;
+};
+
+struct Sphere {
+	float position[3];
+	float r;
+	float color[3];
+};
+
+struct Circle {
+	float pos[2];
+	float r;
+	float r_square;	// For faster GPU calculations
+	float color[3];
+};
+
+struct Block_id {
+	int x;
+	int y;
+};
+
+struct Shared_data {
+	int host_idx_selected_sphere;
+	int device_idx_selected_sphere;
+};
+
+struct Toolbar_info {
+	int x;
+	int y;
+	int w;
+	int h;
+};
+
+struct Toolbar_control {
+	int id;
+	Toolbar_control_type type;
+	int x;
+	int y;
+	int w;
+	int h;
+	int val_min;
+	int val_max;
+	int val_cur;
 };
 
 Key_info key_info[512] = {}; // GLFW_KEY_ESCAPE is 256 for some reason
@@ -255,6 +299,10 @@ int main(int argc, char* argv[])
 	std::vector<Circle> circles(200);
 	std::vector<Block_id> block_ids(circles.size());
 	Toolbar_info toolbar_info;
+	std::vector<Toolbar_control> toolbar_controls = {
+		{0, Toolbar_control_type::button, 20, 20, 100, 50, 0, 0, 0},
+		{1, Toolbar_control_type::slider, 20, 120, 100, 50, 1, 100, 20}
+	};
 	int block_size = 200;
 	GLuint ssbo_circles;
 	GLuint ssbo_block_ids;
@@ -293,11 +341,47 @@ int main(int argc, char* argv[])
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, ssbo_toolbar_info);
 
 		std::vector<float> toolbar_pixels(3 * toolbar_info.w * toolbar_info.h);
-		for (size_t i = 3 * toolbar_info.w * 30; i < toolbar_pixels.size(); i += 3) {
+		for (size_t i = 0; i < toolbar_pixels.size() - 3 * toolbar_info.w * 30; i += 3) {
 			toolbar_pixels[i + 0] = 0.4f;
 			toolbar_pixels[i + 1] = std::sin(i) * std::sin(i);
 			toolbar_pixels[i + 2] = (i % 1000) / 1000.0f;
 		}
+
+		for (const auto& c : toolbar_controls) {
+			switch (c.type) {
+			case Toolbar_control_type::button:
+				for (int col = c.x; col < + c.x + c.w; col++) {
+					for (int row = c.y; row < c.y + c.h; row++) {
+						int row_fixed = toolbar_info.h - c.y - row - 1;
+						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 0] = 1.0;
+						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 1] = 1.0;
+						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 2] = 1.0;
+					}
+				}
+				break;
+			case Toolbar_control_type::slider:
+				int anchor_min_x = -1;
+				int anchor_max_x = -1;
+				if (c.val_max - c.val_min > 0) {
+					anchor_min_x = c.x + c.val_cur * (float)c.w / (float)(c.val_max - c.val_min);
+					anchor_max_x = anchor_min_x + 3;
+				}
+
+				for (int col = c.x; col < +c.x + c.w; col++) {
+					for (int row = c.y; row < c.y + c.h; row++) {
+						int row_fixed = toolbar_info.h - c.y - row - 1;
+						float colors[3] = { 1.0,1.0,1.0 };
+						if (col >= anchor_min_x && col<anchor_max_x) {
+							colors[0] = 0.5;
+						}
+						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 0] = colors[0];
+						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 1] = colors[1];
+						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 2] = colors[2];
+					}
+				}
+			}
+		}
+
 		glGenBuffers(1, &ssbo_toolbar_colors);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_toolbar_colors);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(float) * toolbar_pixels.size(), (const void*)toolbar_pixels.data(), GL_DYNAMIC_DRAW);
