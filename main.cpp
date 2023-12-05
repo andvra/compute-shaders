@@ -17,8 +17,8 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void renderQuad();
 
 // settings
-const unsigned int SCR_WIDTH = 1200*2;
-const unsigned int SCR_HEIGHT = 900*2;
+const unsigned int SCR_WIDTH = 1200;
+const unsigned int SCR_HEIGHT = 900;
 
 // texture size
 const unsigned int TEXTURE_WIDTH = SCR_WIDTH, TEXTURE_HEIGHT = SCR_HEIGHT;
@@ -79,6 +79,7 @@ struct Toolbar_info {
 	int y;
 	int w;
 	int h;
+	int border_height;
 };
 
 struct Toolbar_control {
@@ -143,36 +144,6 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 		break;
 	}
 }
-
-struct Sphere {
-	float position[3];
-	float r;
-	float color[3];
-};
-
-struct Circle {
-	float pos[2];
-	float r;
-	float r_square;	// For faster GPU calculations
-	float color[3];
-};
-
-struct Block_id {
-	int x;
-	int y;
-};
-
-struct Shared_data {
-	int host_idx_selected_sphere;
-	int device_idx_selected_sphere;
-};
-
-struct Toolbar_info {
-	int x;
-	int y;
-	int w;
-	int h;
-};
 
 int main(int argc, char* argv[])
 {
@@ -299,9 +270,14 @@ int main(int argc, char* argv[])
 	std::vector<Circle> circles(200);
 	std::vector<Block_id> block_ids(circles.size());
 	Toolbar_info toolbar_info;
+	toolbar_info = { .x = 100, .y = 300, .w = 300, .h = 500, .border_height = 50 };
+	// This is to flip the coordinate system so it works with GLSL
+	toolbar_info.y = SCR_HEIGHT - toolbar_info.y - toolbar_info.h;
+	std::vector<float> toolbar_pixels(3 * toolbar_info.w * toolbar_info.h);
+	enum class Toolbar_control_ids { button_toggle_alpha, slider_alpha_level };
 	std::vector<Toolbar_control> toolbar_controls = {
-		{0, Toolbar_control_type::button, 20, 20, 100, 50, 0, 0, 0},
-		{1, Toolbar_control_type::slider, 20, 120, 100, 50, 1, 100, 20}
+		{(int)Toolbar_control_ids::button_toggle_alpha, Toolbar_control_type::button, 20, 50, 100, 50, 0, 0, 0},
+		{(int)Toolbar_control_ids::slider_alpha_level, Toolbar_control_type::slider, 20, 120, 200, 50, 1, 100, 65}
 	};
 	int block_size = 200;
 	GLuint ssbo_circles;
@@ -309,8 +285,59 @@ int main(int argc, char* argv[])
 	GLuint ssbo_toolbar_info;
 	GLuint ssbo_toolbar_colors;
 	int idx_active_circle = -1;
+	int idx_active_control = -1;
 	bool moving_toolbar = false;
 	int toolbar_click_pos[2] = {};
+	bool use_toolbar_alpha = false;
+	float toolbar_opacity_min = 0.5f;
+	int slider_id = (int)Toolbar_control_ids::slider_alpha_level;
+	float toolbar_opacity = toolbar_opacity_min + (1 - toolbar_opacity_min) * ((float)(toolbar_controls[slider_id].val_cur - toolbar_controls[slider_id].val_min) / (toolbar_controls[slider_id].val_max - toolbar_controls[slider_id].val_min));
+
+	auto draw_control = [&toolbar_pixels, &toolbar_info, &ssbo_toolbar_colors](Toolbar_control& toolbar_control, bool do_push_to_device) {
+		auto& c = toolbar_control;
+
+		switch (c.type) {
+		case Toolbar_control_type::button:
+			for (int col = c.x; col < +c.x + c.w; col++) {
+				for (int row = c.y; row < c.y + c.h; row++) {
+					int row_fixed = toolbar_info.h - row - 1;
+					toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 0] = 1.0;
+					toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 1] = 1.0;
+					toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 2] = 1.0;
+				}
+			}
+			break;
+		case Toolbar_control_type::slider:
+			int anchor_width = 5;
+			int anchor_min_x = -1;
+			int anchor_max_x = -1;
+			if (c.val_max - c.val_min > 0) {
+				float factor = (c.val_cur - c.val_min) / (float)(c.val_max - c.val_min);
+				int available_pixels = c.w - anchor_width;
+
+				anchor_min_x = c.x + factor * available_pixels;
+				anchor_max_x = anchor_min_x + anchor_width;
+			}
+			for (int col = c.x; col < +c.x + c.w; col++) {
+				for (int row = c.y; row < c.y + c.h; row++) {
+					int row_fixed = toolbar_info.h - row - 1;
+					float colors[3] = { 1.0,1.0,1.0 };
+					if (col >= anchor_min_x && col < anchor_max_x) {
+						colors[0] = 0.5;
+					}
+					toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 0] = colors[0];
+					toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 1] = colors[1];
+					toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 2] = colors[2];
+				}
+			}
+		}
+
+		if (do_push_to_device) {
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_toolbar_colors);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(float) * toolbar_pixels.size(), toolbar_pixels.data());
+		}
+	};
+
 	{
 		for (int i = 0; i < circles.size(); i++) {
 			Circle c = { 100 + std::rand() % (SCR_WIDTH - 200), 100 + std::rand() % (SCR_HEIGHT - 200), 5, 0, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f };
@@ -332,54 +359,19 @@ int main(int argc, char* argv[])
 		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Block_id) * block_ids.size(), (const void*)block_ids.data(), GL_DYNAMIC_DRAW);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, ssbo_block_ids);
 
-		toolbar_info = { .x = 100, .y = 300, .w = 300, .h = 500 };
-		// This is to flip the coordinate system so it works with GLSL
-		toolbar_info.y = SCR_HEIGHT - toolbar_info.y - toolbar_info.h;
 		glGenBuffers(1, &ssbo_toolbar_info);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_toolbar_info);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Toolbar_info) * 1, (const void*)&toolbar_info, GL_DYNAMIC_DRAW);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, ssbo_toolbar_info);
 
-		std::vector<float> toolbar_pixels(3 * toolbar_info.w * toolbar_info.h);
-		for (size_t i = 0; i < toolbar_pixels.size() - 3 * toolbar_info.w * 30; i += 3) {
+		for (size_t i = 0; i < toolbar_pixels.size() - 3 * toolbar_info.w * toolbar_info.border_height; i += 3) {
 			toolbar_pixels[i + 0] = 0.4f;
 			toolbar_pixels[i + 1] = std::sin(i) * std::sin(i);
 			toolbar_pixels[i + 2] = (i % 1000) / 1000.0f;
 		}
 
-		for (const auto& c : toolbar_controls) {
-			switch (c.type) {
-			case Toolbar_control_type::button:
-				for (int col = c.x; col < + c.x + c.w; col++) {
-					for (int row = c.y; row < c.y + c.h; row++) {
-						int row_fixed = toolbar_info.h - c.y - row - 1;
-						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 0] = 1.0;
-						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 1] = 1.0;
-						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 2] = 1.0;
-					}
-				}
-				break;
-			case Toolbar_control_type::slider:
-				int anchor_min_x = -1;
-				int anchor_max_x = -1;
-				if (c.val_max - c.val_min > 0) {
-					anchor_min_x = c.x + c.val_cur * (float)c.w / (float)(c.val_max - c.val_min);
-					anchor_max_x = anchor_min_x + 3;
-				}
-
-				for (int col = c.x; col < +c.x + c.w; col++) {
-					for (int row = c.y; row < c.y + c.h; row++) {
-						int row_fixed = toolbar_info.h - c.y - row - 1;
-						float colors[3] = { 1.0,1.0,1.0 };
-						if (col >= anchor_min_x && col<anchor_max_x) {
-							colors[0] = 0.5;
-						}
-						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 0] = colors[0];
-						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 1] = colors[1];
-						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 2] = colors[2];
-					}
-				}
-			}
+		for (auto& c : toolbar_controls) {
+			draw_control(c, false);
 		}
 
 		glGenBuffers(1, &ssbo_toolbar_colors);
@@ -391,6 +383,7 @@ int main(int argc, char* argv[])
 		marching.setInt("block_size", block_size);
 		marching.setInt("w", SCR_WIDTH);
 		marching.setInt("h", SCR_HEIGHT);
+		marching.setFloat("toolbar_opacity", toolbar_opacity);
 	}
 
 	initial_shader.use();
@@ -523,20 +516,49 @@ int main(int argc, char* argv[])
 			double xpos, ypos;
 			glfwGetCursorPos(window, &xpos, &ypos);
 			auto y_fixed = SCR_HEIGHT - ypos;
-
 			bool within_toolbar_x = (xpos >= toolbar_info.x && xpos < toolbar_info.x + toolbar_info.w);
 			bool within_toolbar_y = (y_fixed >= toolbar_info.y && y_fixed < toolbar_info.y + toolbar_info.h);
 
 			if (within_toolbar_x && within_toolbar_y) {
-				if (y_fixed - toolbar_info.y > toolbar_info.h - 30) {
+				int pos_rel_x = xpos - toolbar_info.x;
+				int pos_rel_y = toolbar_info.y + toolbar_info.h - y_fixed;
+				if (pos_rel_y < toolbar_info.border_height) {
 					moving_toolbar = true;
 					toolbar_click_pos[0] = xpos - toolbar_info.x;
 					toolbar_click_pos[1] = y_fixed - toolbar_info.y;
-					// TODO: We pressed on the toolbar. React to that
-					// Create controls on the toolbar. Prioritise clicking: first the control, then the toolbar.
-					// Spinners would be nice
 				}
+				for (auto& c : toolbar_controls) {
+					bool hit_x = (pos_rel_x >= c.x && pos_rel_x < c.x + c.w);
+					bool hit_y = (pos_rel_y > c.y && pos_rel_y < c.y + c.h);
+					if (hit_x && hit_y) {
+						switch (c.type) {
+						case Toolbar_control_type::button:
+							// TODO: Act on this button
+							use_toolbar_alpha = !use_toolbar_alpha;
+							marching.use();
+							marching.setBool("use_toolbar_alpha", use_toolbar_alpha);
+							break;
+						case Toolbar_control_type::slider:
+						{
+							int anchor_width = 5;
+							int anchor_min_x = -1;
+							int anchor_max_x = -1;
+							if (c.val_max - c.val_min > 0) {
+								float factor = (c.val_cur - c.val_min) / (float)(c.val_max - c.val_min);
+								int available_pixels = c.w - anchor_width;
 
+								anchor_min_x = c.x + factor * available_pixels;
+								anchor_max_x = anchor_min_x + anchor_width;
+							}
+							if (pos_rel_x >= anchor_min_x && pos_rel_x < anchor_max_x) {
+								idx_active_control = c.id;
+								// TODO: We are pulling the slider
+							}
+						}
+							break;
+						}
+					}
+				}
 			}
 			else {
 				for (int i = 0; i < circles.size(); i++) {
@@ -570,9 +592,24 @@ int main(int argc, char* argv[])
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_toolbar_info);
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(Toolbar_info), &toolbar_info);
 		}
+		if (shader == Shaders::marching && mouse_button_info[0].is_pressed && idx_active_control > -1) {
+			double xpos, ypos;
+			glfwGetCursorPos(window, &xpos, &ypos);
+			auto& c = toolbar_controls[idx_active_control];
+			int xrel = xpos - toolbar_info.x - c.x;
+			float pos_factor = xrel / (float)c.w;
+			int new_val = c.val_min + pos_factor * (c.val_max - c.val_min);
+			new_val = std::clamp(new_val, c.val_min, c.val_max);
+			toolbar_opacity = toolbar_opacity_min + (1 - toolbar_opacity_min) * ((float)(c.val_cur - c.val_min) / (c.val_max - c.val_min));
+			marching.use();
+			marching.setFloat("toolbar_opacity", toolbar_opacity);
+			c.val_cur = new_val;
+			draw_control(c, true);
+		}
 		if (shader == Shaders::marching && !mouse_button_info[0].is_pressed) {
 			idx_active_circle = -1;
 			moving_toolbar = false;
+			idx_active_control = -1;
 		}
 		if (shader == Shaders::marching) {
 			if (circles.size() >= 2) {

@@ -17,6 +17,7 @@ struct Toolbar_info {
     int y;
     int w;
     int h;
+    int border_height;
 };
 
 layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
@@ -24,6 +25,8 @@ layout(rgba32f, binding = 0) uniform image2D img_output;
 layout(location = 0) uniform int block_size;
 layout(location = 1) uniform int w;
 layout(location = 2) uniform int h;
+layout(location = 3) uniform bool use_toolbar_alpha;
+layout(location = 4) uniform float toolbar_opacity;
 
 layout(std430, binding = 3) buffer layout_circles
 {
@@ -55,7 +58,6 @@ void main()
     bool within_toolbar_x = (texel_coord.x >= toolbar_info.x && texel_coord.x < (toolbar_info.x + toolbar_info.w));
     bool within_toolbar_y = (texel_coord.y >= toolbar_info.y && texel_coord.y < (toolbar_info.y + toolbar_info.h));
     bool within_toolbar = within_toolbar_x && within_toolbar_y;
-    bool use_toolbar_alpha = true;
 
     if (within_toolbar) {
         int x_rel = texel_coord.x - toolbar_info.x;
@@ -100,7 +102,6 @@ void main()
     vec4 pixel_color = pixel_color_scene;
 
     if (within_toolbar) {
-        float toolbar_opacity = 0.9f;
         if (use_toolbar_alpha) {
             pixel_color = toolbar_opacity * pixel_color_toolbar + (1.0f - toolbar_opacity) * pixel_color_scene;
         }
