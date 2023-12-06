@@ -145,6 +145,37 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 	}
 }
 
+std::vector<unsigned char> read_bmp(std::string filename)
+{
+	FILE* f = fopen(filename.c_str(), "rb");
+	unsigned char info[54];
+
+	// read the 54-byte header
+	fread(info, sizeof(unsigned char), 54, f);
+
+	// extract image height and width from header
+	int width = *(int*)&info[18];
+	int height = *(int*)&info[22];
+
+	// allocate 3 bytes per pixel
+	int size = 3 * width * height;
+	std::vector<unsigned char> data(size);
+
+	// read the rest of the data at once
+	fread(data.data(), sizeof(unsigned char), size, f);
+	fclose(f);
+
+	for (size_t i = 0; i < size; i += 3)
+	{
+		// flip the order of every 3 bytes
+		auto tmp = data[i];
+		data[i] = data[i + 2];
+		data[i + 2] = tmp;
+	}
+
+	return data;
+}
+
 int main(int argc, char* argv[])
 {
 	glfwInit();
@@ -293,6 +324,28 @@ int main(int argc, char* argv[])
 	int slider_id = (int)Toolbar_control_ids::slider_alpha_level;
 	float toolbar_opacity = toolbar_opacity_min + (1 - toolbar_opacity_min) * ((float)(toolbar_controls[slider_id].val_cur - toolbar_controls[slider_id].val_min) / (toolbar_controls[slider_id].val_max - toolbar_controls[slider_id].val_min));
 
+	std::string font_file = (root_folder / "font_bitmap_16.bmp").string();
+
+	auto font_texture = read_bmp((char*)font_file.c_str());
+
+	auto draw_char = [&toolbar_pixels, &toolbar_info, &font_texture](int idx_char, int offset_x, int offset_y) {
+		int char_width = 16;
+		int char_height = 24;
+		int num_chars_per_row = 16;
+		int tot_width = char_width * num_chars_per_row;
+		int char_row = idx_char / num_chars_per_row;
+		int char_col = idx_char - char_row * num_chars_per_row;
+		for (int i = 0; i < char_width; i++) {
+			for (int j = 0; j < char_height; j++) {
+				for (int c = 0; c < 3; c++) {
+					auto col_offset = char_col * char_width;
+					auto row_offset = char_row * char_height;
+					toolbar_pixels[3 * (i + offset_x + (j + offset_y) * toolbar_info.w) + c] = font_texture[3 * (col_offset + i + (j + row_offset) * tot_width) + c] / 255.0f;
+				}
+			}
+		}
+	};
+
 	auto draw_control = [&toolbar_pixels, &toolbar_info, &ssbo_toolbar_colors](Toolbar_control& toolbar_control, bool do_push_to_device) {
 		auto& c = toolbar_control;
 
@@ -369,6 +422,8 @@ int main(int argc, char* argv[])
 			toolbar_pixels[i + 1] = std::sin(i) * std::sin(i);
 			toolbar_pixels[i + 2] = (i % 1000) / 1000.0f;
 		}
+
+		draw_char(0, 25, 5);
 
 		for (auto& c : toolbar_controls) {
 			draw_control(c, false);
