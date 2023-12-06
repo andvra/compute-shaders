@@ -103,7 +103,13 @@ void main()
 
     if (within_toolbar) {
         if (use_toolbar_alpha) {
-            pixel_color = toolbar_opacity * pixel_color_toolbar + (1.0f - toolbar_opacity) * pixel_color_scene;
+            int y_rel = texel_coord.y - toolbar_info.y;
+            pixel_color_toolbar.a = 0.0f;
+            if (y_rel < toolbar_info.h - toolbar_info.border_height) {
+                pixel_color_toolbar.a = 1.0 - toolbar_opacity;
+            }
+            pixel_color = vec4(mix(pixel_color_toolbar.rgb, pixel_color_scene.rgb, pixel_color_toolbar.a), 1.0f);
+
         }
         else {
             pixel_color = pixel_color_toolbar;
