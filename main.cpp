@@ -328,22 +328,36 @@ int main(int argc, char* argv[])
 
 	auto font_texture = read_bmp((char*)font_file.c_str());
 
-	auto draw_char = [&toolbar_pixels, &toolbar_info, &font_texture](int idx_char, int offset_x, int offset_y) {
+	auto draw_chars = [&toolbar_pixels, &toolbar_info, &font_texture](std::string s, int offset_x, int offset_y) {
 		int char_width = 16;
 		int char_height = 24;
 		int num_chars_per_row = 16;
 		int num_rows = 8;
 		int tot_width = char_width * num_chars_per_row;
-		int char_row = idx_char / num_chars_per_row;
-		int char_col = idx_char - char_row * num_chars_per_row;
-		for (int i = 0; i < char_width; i++) {
-			for (int j = 0; j < char_height; j++) {
-				for (int c = 0; c < 3; c++) {
+		for (auto idx_char : s) {
+			int char_row = idx_char / num_chars_per_row;
+			int char_col = idx_char - char_row * num_chars_per_row;
+			for (int i = 0; i < char_width; i++) {
+				auto toolbar_x = i + offset_x;
+				if (toolbar_x < 0 || toolbar_x >= toolbar_info.w) {
+					continue;
+				}
+				for (int j = 0; j < char_height; j++) {
+					auto toolbar_y = j + offset_y;
+					if (toolbar_y < 0 || toolbar_y >= toolbar_info.h) {
+						std::cout << "y out of bounds" << std::endl;
+						continue;
+					}
 					auto col_offset = char_col * char_width;
 					auto row_offset = (num_rows - 1 - char_row) * char_height;
-					toolbar_pixels[3 * (i + offset_x + (j + offset_y) * toolbar_info.w) + c] = font_texture[3 * (col_offset + i + (j + row_offset) * tot_width) + c] / 255.0f;
+					auto font_texture_x = col_offset + i;
+					auto font_texture_y = j + row_offset;
+					for (int c = 0; c < 3; c++) {
+						toolbar_pixels[3 * (toolbar_x + toolbar_y * toolbar_info.w) + c] = font_texture[3 * (font_texture_x + font_texture_y * tot_width) + c] / 255.0f;
+					}
 				}
 			}
+			offset_x += char_width;
 		}
 	};
 
@@ -424,7 +438,7 @@ int main(int argc, char* argv[])
 			toolbar_pixels[i + 2] = (i % 1000) / 1000.0f;
 		}
 
-		draw_char('A', 25, 5);
+		draw_chars("one two three 1 2 3", 55, 50);
 
 		for (auto& c : toolbar_controls) {
 			draw_control(c, false);
