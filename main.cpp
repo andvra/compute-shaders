@@ -607,7 +607,7 @@ int main(int argc, char* argv[])
 
 		float fps_print_diff_time = currentFrame - last_fps_time;
 		if (fps_print_diff_time > 1.0f) {
-			std::cout << "FPS: " << frame_counter / fps_print_diff_time << std::endl;
+			std::cout << "FPS: " << frame_counter / fps_print_diff_time << " (" << 1000 * fps_print_diff_time / frame_counter << " ms per frame)" << std::endl;
 			frame_counter = 0;
 			last_fps_time = currentFrame;
 		}
