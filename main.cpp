@@ -332,6 +332,7 @@ int main(int argc, char* argv[])
 		int char_width = 16;
 		int char_height = 24;
 		int num_chars_per_row = 16;
+		int num_rows = 8;
 		int tot_width = char_width * num_chars_per_row;
 		int char_row = idx_char / num_chars_per_row;
 		int char_col = idx_char - char_row * num_chars_per_row;
@@ -339,7 +340,7 @@ int main(int argc, char* argv[])
 			for (int j = 0; j < char_height; j++) {
 				for (int c = 0; c < 3; c++) {
 					auto col_offset = char_col * char_width;
-					auto row_offset = char_row * char_height;
+					auto row_offset = (num_rows - 1 - char_row) * char_height;
 					toolbar_pixels[3 * (i + offset_x + (j + offset_y) * toolbar_info.w) + c] = font_texture[3 * (col_offset + i + (j + row_offset) * tot_width) + c] / 255.0f;
 				}
 			}
@@ -423,7 +424,7 @@ int main(int argc, char* argv[])
 			toolbar_pixels[i + 2] = (i % 1000) / 1000.0f;
 		}
 
-		draw_char(0, 25, 5);
+		draw_char('A', 25, 5);
 
 		for (auto& c : toolbar_controls) {
 			draw_control(c, false);
