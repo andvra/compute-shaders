@@ -31,7 +31,7 @@ auto background_center = glm::vec2(500, 500);
 enum class Shaders { funky, rays, marching, solver };
 enum class Toolbar_control_type { button, slider, knob };
 
-Shaders shader = Shaders::funky;
+Shaders shader = Shaders::marching;
 
 struct Key_info {
 	bool is_pressed;
@@ -305,10 +305,11 @@ int main(int argc, char* argv[])
 	// This is to flip the coordinate system so it works with GLSL
 	toolbar_info.y = SCR_HEIGHT - toolbar_info.y - toolbar_info.h;
 	std::vector<float> toolbar_pixels(3 * toolbar_info.w * toolbar_info.h);
-	enum class Toolbar_control_ids { button_toggle_alpha, slider_alpha_level };
+	enum class Toolbar_control_ids { button_toggle_alpha, slider_alpha_level, knob_value};
 	std::vector<Toolbar_control> toolbar_controls = {
 		{(int)Toolbar_control_ids::button_toggle_alpha, Toolbar_control_type::button, 20, 50, 100, 50, 0, 0, 0},
-		{(int)Toolbar_control_ids::slider_alpha_level, Toolbar_control_type::slider, 20, 120, 200, 50, 1, 100, 65}
+		{(int)Toolbar_control_ids::slider_alpha_level, Toolbar_control_type::slider, 20, 120, 200, 50, 1, 100, 65},
+		{(int)Toolbar_control_ids::knob_value, Toolbar_control_type::knob, 20, 190, 50, 50, 1, 100, 1}
 	};
 	int block_size = 200;
 	GLuint ssbo_circles;
@@ -323,10 +324,33 @@ int main(int argc, char* argv[])
 	float toolbar_opacity_min = 0.5f;
 	int slider_id = (int)Toolbar_control_ids::slider_alpha_level;
 	float toolbar_opacity = toolbar_opacity_min + (1 - toolbar_opacity_min) * ((float)(toolbar_controls[slider_id].val_cur - toolbar_controls[slider_id].val_min) / (toolbar_controls[slider_id].val_max - toolbar_controls[slider_id].val_min));
-
+	int knob_down_start_x = 0;
+	int knob_down_start_val = 0;
 	std::string font_file = (root_folder / "font_bitmap_16.bmp").string();
 
 	auto font_texture = read_bmp((char*)font_file.c_str());
+
+	auto hack_to_correct_font_bitmap_colors = [&font_texture]() {
+		// The bitmap has blue-ish colors. We want pure black/white, so fix accordingly
+		for (int idx_font_color = 0; idx_font_color < font_texture.size(); idx_font_color += 3) {
+			unsigned char& c1 = font_texture[idx_font_color + 0];
+			unsigned char& c2 = font_texture[idx_font_color + 1];
+			unsigned char& c3 = font_texture[idx_font_color + 2];
+			int tot_diff = std::abs(c1 - 255) + std::abs(c2 - 255) + std::abs(c3 - 255);
+			if (tot_diff < 100) {
+				c1 = 255;
+				c2 = 255;
+				c3 = 255;
+			}
+			else {
+				c1 = 0;
+				c2 = 0;
+				c3 = 0;
+			}
+		}
+	};
+
+	hack_to_correct_font_bitmap_colors();
 
 	auto draw_chars = [&toolbar_pixels, &toolbar_info, &font_texture](std::string s, int offset_x, int offset_y) {
 		int char_width = 16;
@@ -345,7 +369,6 @@ int main(int argc, char* argv[])
 				for (int j = 0; j < char_height; j++) {
 					auto toolbar_y = j + offset_y;
 					if (toolbar_y < 0 || toolbar_y >= toolbar_info.h) {
-						std::cout << "y out of bounds" << std::endl;
 						continue;
 					}
 					auto col_offset = char_col * char_width;
@@ -361,7 +384,31 @@ int main(int argc, char* argv[])
 		}
 	};
 
-	auto draw_control = [&toolbar_pixels, &toolbar_info, &ssbo_toolbar_colors](Toolbar_control& toolbar_control, bool do_push_to_device) {
+	auto draw_toolbar = [&toolbar_pixels, &toolbar_info, &draw_chars](int x_start, int x_end, int y_start, int y_end) {
+		for (int col = x_start; col < x_end; col++) {
+			for (int row = y_start; row < y_end; row++) {
+				int row_fixed = toolbar_info.h - row - 1;
+				float color[3];
+				int idx_pixel = 3 * (col + row * toolbar_info.w);
+				if (row_fixed >= toolbar_info.border_height) {
+					color[0] = 0.4f;
+					color[1] = std::sin(idx_pixel) * std::sin(idx_pixel);
+					color[2] = (idx_pixel % 1000) / 1000.0f;
+				}
+				else {
+					color[0] = 0.0f;
+					color[1] = 0.0f;
+					color[2] = 0.0f;
+				}
+				for (int i = 0; i < 3; i++) {
+					toolbar_pixels[idx_pixel + i] = color[i];
+				}
+			}
+		}
+		draw_chars("Main toolbar", 20, toolbar_info.h - 40);
+	};
+
+	auto draw_control = [&toolbar_pixels, &toolbar_info, &ssbo_toolbar_colors, &draw_chars, &draw_toolbar](Toolbar_control& toolbar_control, bool do_push_to_device) {
 		auto& c = toolbar_control;
 
 		switch (c.type) {
@@ -375,6 +422,51 @@ int main(int argc, char* argv[])
 				}
 			}
 			break;
+		case Toolbar_control_type::knob:
+			{
+				float r = c.w / 2.0f;
+				float max_dist = r * r; // Width and height must be equal
+				auto center_x = c.x + c.w / 2;
+				auto center_y = c.y + c.h / 2;
+				float colors[3] = { 1.0,1.0,1.0 };
+				int fixed_y = toolbar_info.h - c.y - 1;
+				int margin_for_chars_px = 100;
+				draw_toolbar(c.x, c.x + c.w + margin_for_chars_px, fixed_y - c.h, fixed_y);
+				for (int col = c.x; col < c.x + c.w; col++) {
+					for (int row = c.y; row < c.y + c.h; row++) {
+						auto cur_dist = (center_x - col) * (center_x - col) + (center_y - row) * (center_y - row);
+
+						if(cur_dist > max_dist) {
+							continue;
+						}
+
+						int row_fixed = toolbar_info.h - row - 1;
+						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 0] = colors[0];
+						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 1] = colors[1];
+						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 2] = colors[2];
+					}
+				}
+				float factor = (c.val_cur - c.val_min) / (float)(c.val_max - c.val_min);
+				float diff_from_full_circle_rad = 0.5f;
+				float angle_rad = diff_from_full_circle_rad + factor * (2.0f * 3.1415f - 2.0f * diff_from_full_circle_rad);
+				float dot_r = 5;
+				int dot_center_x = center_x + (r - dot_r) * std::sin(-angle_rad);
+				int dot_start_x = dot_center_x - dot_r;
+				int dot_end_x = dot_start_x + dot_r;
+				int dot_center_y = center_y + (r - dot_r) * std::cos(angle_rad);
+				int dot_start_y = dot_center_y - dot_r;
+				int dot_end_y = dot_start_y + dot_r;
+				for (int col = dot_start_x; col <= dot_end_x; col++) {
+					for (int row = dot_start_y; row <= dot_end_y; row++) {
+						int row_fixed = toolbar_info.h - row - 1;
+						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 0] = 0.4f;
+						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 1] = 0.5f;
+						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 2] = 0.9f;
+					}
+				}
+				draw_chars(std::to_string(c.val_cur), c.x + c.w + 10, toolbar_info.h - c.y - 1 - c.h / 2 - 12);
+			}
+			break;
 		case Toolbar_control_type::slider:
 			int anchor_width = 5;
 			int anchor_min_x = -1;
@@ -386,7 +478,7 @@ int main(int argc, char* argv[])
 				anchor_min_x = c.x + factor * available_pixels;
 				anchor_max_x = anchor_min_x + anchor_width;
 			}
-			for (int col = c.x; col < +c.x + c.w; col++) {
+			for (int col = c.x; col < c.x + c.w; col++) {
 				for (int row = c.y; row < c.y + c.h; row++) {
 					int row_fixed = toolbar_info.h - row - 1;
 					float colors[3] = { 1.0,1.0,1.0 };
@@ -432,11 +524,7 @@ int main(int argc, char* argv[])
 		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Toolbar_info) * 1, (const void*)&toolbar_info, GL_DYNAMIC_DRAW);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, ssbo_toolbar_info);
 
-		for (size_t i = 0; i < toolbar_pixels.size() - 3 * toolbar_info.w * toolbar_info.border_height; i += 3) {
-			toolbar_pixels[i + 0] = 0.4f;
-			toolbar_pixels[i + 1] = std::sin(i) * std::sin(i);
-			toolbar_pixels[i + 2] = (i % 1000) / 1000.0f;
-		}
+		draw_toolbar(0, toolbar_info.w, 0, toolbar_info.h);
 
 		draw_chars("one two three 1 2 3", 55, 50);
 
@@ -609,22 +697,28 @@ int main(int argc, char* argv[])
 							marching.setBool("use_toolbar_alpha", use_toolbar_alpha);
 							break;
 						case Toolbar_control_type::slider:
-						{
-							int anchor_width = 5;
-							int anchor_min_x = -1;
-							int anchor_max_x = -1;
-							if (c.val_max - c.val_min > 0) {
-								float factor = (c.val_cur - c.val_min) / (float)(c.val_max - c.val_min);
-								int available_pixels = c.w - anchor_width;
+							{
+								int anchor_width = 10;
+								int anchor_min_x = -1;
+								int anchor_max_x = -1;
+								if (c.val_max - c.val_min > 0) {
+									float factor = (c.val_cur - c.val_min) / (float)(c.val_max - c.val_min);
+									int available_pixels = c.w - anchor_width;
 
-								anchor_min_x = c.x + factor * available_pixels;
-								anchor_max_x = anchor_min_x + anchor_width;
+									anchor_min_x = c.x + factor * available_pixels;
+									anchor_max_x = anchor_min_x + anchor_width;
+								}
+								if (pos_rel_x >= anchor_min_x && pos_rel_x < anchor_max_x) {
+									idx_active_control = c.id;
+									// TODO: We are pulling the slider
+								}
 							}
-							if (pos_rel_x >= anchor_min_x && pos_rel_x < anchor_max_x) {
-								idx_active_control = c.id;
-								// TODO: We are pulling the slider
-							}
-						}
+							break;
+						case Toolbar_control_type::knob:
+							idx_active_control = c.id;
+							knob_down_start_x = xpos;
+							knob_down_start_val = c.val_cur;
+							// TODO: Make sure it is within the circle
 							break;
 						}
 					}
@@ -666,14 +760,27 @@ int main(int argc, char* argv[])
 			double xpos, ypos;
 			glfwGetCursorPos(window, &xpos, &ypos);
 			auto& c = toolbar_controls[idx_active_control];
-			int xrel = xpos - toolbar_info.x - c.x;
-			float pos_factor = xrel / (float)c.w;
-			int new_val = c.val_min + pos_factor * (c.val_max - c.val_min);
-			new_val = std::clamp(new_val, c.val_min, c.val_max);
-			toolbar_opacity = toolbar_opacity_min + (1 - toolbar_opacity_min) * ((float)(c.val_cur - c.val_min) / (c.val_max - c.val_min));
-			marching.use();
-			marching.setFloat("toolbar_opacity", toolbar_opacity);
-			c.val_cur = new_val;
+			switch(c.type) {
+			case Toolbar_control_type::slider:
+				{
+					int xrel = xpos - toolbar_info.x - c.x;
+					float pos_factor = xrel / (float)c.w;
+					int new_val = c.val_min + pos_factor * (c.val_max - c.val_min);
+					new_val = std::clamp(new_val, c.val_min, c.val_max);
+					c.val_cur = new_val;
+					toolbar_opacity = toolbar_opacity_min + (1 - toolbar_opacity_min) * ((float)(c.val_cur - c.val_min) / (c.val_max - c.val_min));
+					marching.use();
+					marching.setFloat("toolbar_opacity", toolbar_opacity);
+				}
+				break;
+			case Toolbar_control_type::knob:
+				auto move_range = 200.0f;
+				auto pos_factor = (xpos - knob_down_start_x) / move_range;
+				int new_val = knob_down_start_val + pos_factor * (c.val_max - c.val_min);
+				new_val = std::clamp(new_val, c.val_min, c.val_max);
+				c.val_cur = new_val;
+				break;
+			}
 			draw_control(c, true);
 		}
 		if (shader == Shaders::marching && !mouse_button_info[0].is_pressed) {
