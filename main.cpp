@@ -868,7 +868,8 @@ int main(int argc, char* argv[])
 		switch (shader) {
 		case Shaders::mold:
 			mold.use();
-			mold.setFloat("t", currentFrame);
+			mold.setFloat("t_tot", currentFrame);
+			mold.setFloat("t_delta", deltaTime);
 			for (int action_id = 0; action_id < 3; action_id++) {
 				mold.setInt("action_id", action_id);
 				glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
