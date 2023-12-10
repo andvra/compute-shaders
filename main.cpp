@@ -28,10 +28,10 @@ float deltaTime = 0.0f; // time between current frame and last frame
 float lastFrame = 0.0f; // time of last frame
 
 auto background_center = glm::vec2(500, 500);
-enum class Shaders { funky, rays, marching, solver };
+enum class Shaders { funky, rays, marching, solver, mold };
 enum class Toolbar_control_type { button, slider, knob };
 
-Shaders shader = Shaders::marching;
+Shaders shader = Shaders::mold;
 
 struct Key_info {
 	bool is_pressed;
@@ -62,6 +62,11 @@ struct Circle {
 	float r;
 	float r_square;	// For faster GPU calculations
 	float color[3];
+};
+
+struct Mold_particle {
+	float pos[2];
+	float angle;
 };
 
 struct Block_id {
@@ -238,11 +243,18 @@ int main(int argc, char* argv[])
 	auto solver_path = (root_folder / "solver.glsl").string();
 	auto rays_path = (root_folder / "rays.glsl").string();
 	auto marching_path = (root_folder / "marching.glsl").string();
+	auto mold_path = (root_folder / "mold.glsl").string();
 	Shader screenQuad(vertex_shader_path.c_str(), fragment_shader_path.c_str());
 	ComputeShader initial_shader(initial_shader_path.c_str());
 	ComputeShader solver(solver_path.c_str());
 	ComputeShader rays(rays_path.c_str());
 	ComputeShader marching(marching_path.c_str());
+	ComputeShader mold(mold_path.c_str());
+
+	mold.use();
+	mold.setInt("w", SCR_WIDTH);
+	mold.setInt("h", SCR_HEIGHT);
+	mold.setInt("action_id", 1);
 
 	screenQuad.use();
 	screenQuad.setInt("tex", 0);
@@ -544,6 +556,21 @@ int main(int argc, char* argv[])
 		marching.setFloat("toolbar_opacity", toolbar_opacity);
 	}
 
+	size_t num_mold_particles = 10000;
+
+	std::vector<Mold_particle> mold_particles(num_mold_particles);
+	for (auto& x : mold_particles) {
+		float pos_x = SCR_WIDTH * (std::rand() % 10000) / 10000.0f;
+		float pos_y = SCR_HEIGHT * (std::rand() % 10000) / 10000.0f;
+		float angle = 2.0f * (float)std::numbers::pi * (std::rand() % 10000) / 10000.0f;
+		x = { .pos = {pos_x,pos_y}, .angle = angle };
+	}
+	GLuint ssbo_mold;
+	glGenBuffers(1, &ssbo_mold);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_mold);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Mold_particle) * mold_particles.size(), (const void*)mold_particles.data(), GL_DYNAMIC_DRAW);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, ssbo_mold);
+
 	initial_shader.use();
 	initial_shader.setInt("w", SCR_WIDTH);
 	initial_shader.setInt("h", SCR_HEIGHT);
@@ -623,6 +650,9 @@ int main(int argc, char* argv[])
 		}
 		if (key_was_just_pressed(GLFW_KEY_3)) {
 			shader = Shaders::marching;
+		}
+		if (key_was_just_pressed(GLFW_KEY_4)) {
+			shader = Shaders::mold;
 		}
 		if (key_is_pressed(GLFW_KEY_W)) {
 			the_camera += the_focus * deltaTime * 5.0f;
@@ -836,13 +866,22 @@ int main(int argc, char* argv[])
 		glfwGetCursorPos(window, &xpos, &ypos);
 
 		switch (shader) {
+		case Shaders::mold:
+			mold.use();
+			mold.setFloat("t", currentFrame);
+			for (int action_id = 0; action_id < 3; action_id++) {
+				mold.setInt("action_id", action_id);
+				glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
+				//glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+			}
+			break;
 		case Shaders::funky:
 			initial_shader.use();
 			initial_shader.setFloat("t", currentFrame);
 			initial_shader.setVec2("mouse_pos", glm::vec2(xpos, ypos));
 			initial_shader.setVec2("background_center", background_center);
 			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
-			// make sure writing to image has finished before read
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 			break;
 		case Shaders::rays:
