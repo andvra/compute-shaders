@@ -4,6 +4,7 @@
 struct Mold_particle {
     float pos[2];
     float angle;
+    int type;
 };
 
 layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
@@ -28,7 +29,13 @@ void draw_objects(ivec2 texel_coord) {
 
     ivec2 pos = ivec2(mold_particles[idx].pos[0], mold_particles[idx].pos[1]);
 
-    vec4 pixel_color = vec4(0, 0.2, 0.3, 1);
+    vec4 pixel_color = vec4(0.0, 0.2, 0.3, 1.0);
+    if (mold_particles[idx].type == 1) {
+        pixel_color = vec4(0.3, 0.2, 0.0, 1.0);
+    }
+    if (mold_particles[idx].type == 2) {
+        pixel_color = vec4(0.2, 0.3, 0.0, 1.0);
+    }
 
     imageStore(img_output, pos, pixel_color);
 }

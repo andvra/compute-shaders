@@ -67,6 +67,7 @@ struct Circle {
 struct Mold_particle {
 	float pos[2];
 	float angle;
+	int type;
 };
 
 struct Block_id {
@@ -556,14 +557,17 @@ int main(int argc, char* argv[])
 		marching.setFloat("toolbar_opacity", toolbar_opacity);
 	}
 
-	size_t num_mold_particles = 10000;
+	size_t num_mold_particles = 25'000;
 
 	std::vector<Mold_particle> mold_particles(num_mold_particles);
+	int type_id = 0;
+	int num_types = 1;
 	for (auto& x : mold_particles) {
 		float pos_x = SCR_WIDTH * (std::rand() % 10000) / 10000.0f;
 		float pos_y = SCR_HEIGHT * (std::rand() % 10000) / 10000.0f;
 		float angle = 2.0f * (float)std::numbers::pi * (std::rand() % 10000) / 10000.0f;
-		x = { .pos = {pos_x,pos_y}, .angle = angle };
+		x = { .pos = {pos_x,pos_y}, .angle = angle, .type = type_id };
+		type_id = (type_id + 1) % num_types;
 	}
 	GLuint ssbo_mold;
 	glGenBuffers(1, &ssbo_mold);
