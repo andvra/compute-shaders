@@ -59,11 +59,13 @@ void move(ivec2 texel_coord) {
 
     bool update_angle = false;
     bool do_move = true;
+
     if (new_x < 0 || new_x >= w) {
         new_x = clamp(new_x, 0, w - 1);
         update_angle = true;
         do_move = false;
     }
+
     if (new_y < 0 || new_y > h) {
         new_y = clamp(new_y, 0, h - 1);
         update_angle = true;
@@ -75,6 +77,7 @@ void move(ivec2 texel_coord) {
         float new_angle = 3.141593f * (1.0f + sin(t * float(idx)));
         mold_particles[idx].angle = new_angle;
     }
+
     if (do_move) {
         mold_particles[idx].pos[0] = new_x;
         mold_particles[idx].pos[1] = new_y;
