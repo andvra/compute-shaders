@@ -881,6 +881,7 @@ int main(int argc, char* argv[])
 
 		switch (shader) {
 		case Shaders::mold:
+			{
 			mold.use();
 			mold.setFloat("t_tot", currentFrame);
 			mold.setFloat("t_delta", deltaTime);
@@ -890,6 +891,7 @@ int main(int argc, char* argv[])
 				glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
 				//glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+			}
 			}
 			break;
 		case Shaders::funky:
