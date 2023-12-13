@@ -232,7 +232,7 @@ int main(int argc, char* argv[])
 
 	std::cout << "Number of invocations in a single local work group that may be dispatched to a compute shader " << max_compute_work_group_invocations << std::endl;
 
-	std::filesystem::path root_folder(R"(D:\work\compute_shaders)");
+	std::filesystem::path root_folder(R"(C:\Users\andre\source\repos\compute-shaders)");
 	if (!std::filesystem::exists(root_folder)) {
 		std::cerr << "Could not find folder " << root_folder.string() << std::endl;
 		return 1;
@@ -575,9 +575,19 @@ int main(int argc, char* argv[])
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Mold_particle) * mold_particles.size(), (const void*)mold_particles.data(), GL_DYNAMIC_DRAW);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, ssbo_mold);
 
+	std::vector<float> mold_intensities(SCR_WIDTH * SCR_HEIGHT * num_types);
+	GLuint ssbo_mold_intensities;
+	glGenBuffers(1, &ssbo_mold_intensities);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_mold_intensities);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(float) * mold_intensities.size(), (const void*)mold_intensities.data(), GL_DYNAMIC_DRAW);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 8, ssbo_mold_intensities);
+
 	initial_shader.use();
 	initial_shader.setInt("w", SCR_WIDTH);
 	initial_shader.setInt("h", SCR_HEIGHT);
+
+	mold.use();
+	mold.setInt("num_types", num_types);
 
 	glfwSetMouseButtonCallback(window, mouse_button_callback);
 	glfwSetKeyCallback(window, key_callback);
@@ -874,7 +884,8 @@ int main(int argc, char* argv[])
 			mold.use();
 			mold.setFloat("t_tot", currentFrame);
 			mold.setFloat("t_delta", deltaTime);
-			for (int action_id = 0; action_id < 3; action_id++) {
+			int tot_num_actions = 4; // Must sync with the number of actions in mold::main()
+			for (int action_id = 0; action_id < tot_num_actions; action_id++) {
 				mold.setInt("action_id", action_id);
 				glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
 				//glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
