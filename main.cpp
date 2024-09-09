@@ -10,18 +10,10 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include "shader_m.h"
 #include "shader_c.h"
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void renderQuad();
-
-// settings
-const unsigned int SCR_WIDTH = 1200;
-const unsigned int SCR_HEIGHT = 900;
-
-// texture size
-const unsigned int TEXTURE_WIDTH = SCR_WIDTH, TEXTURE_HEIGHT = SCR_HEIGHT;
 
 // timing 
 float deltaTime = 0.0f; // time between current frame and last frame
@@ -243,10 +235,142 @@ void print_gl_info() {
 	std::cout << "Number of invocations in a single local work group that may be dispatched to a compute shader " << max_compute_work_group_invocations << std::endl;
 }
 
+bool file_read(std::filesystem::path& path, std::string& s) {
+	std::ifstream t(path);
+
+	if (!t.is_open()) {
+		return false;
+	}
+
+	std::stringstream ss;
+	ss << t.rdbuf();
+
+	s = ss.str();
+
+	return true;
+}
+
+bool has_linker_error(GLuint id_shader, std::string& msg) {
+	const int max_size_log_message = 1024;
+	GLint success;
+	GLchar log_message[max_size_log_message];
+
+	glGetProgramiv(id_shader, GL_LINK_STATUS, &success);
+
+	if (!success) {
+		glGetProgramInfoLog(id_shader, max_size_log_message, NULL, log_message);
+		return true;
+	}
+
+	return false;
+}
+
+bool has_compiler_error(GLuint id_shader, std::string& msg) {
+	const int max_size_log_message = 1024;
+	GLint success;
+	GLchar log_message[max_size_log_message];
+
+	glGetShaderiv(id_shader, GL_COMPILE_STATUS, &success);
+
+	if (!success) {
+		glGetShaderInfoLog(id_shader, max_size_log_message, nullptr, log_message);
+		msg = log_message;
+		return true;
+	}
+
+	return false;
+}
+
+bool compile_shader(GLuint& id_shader, const std::string& shader_code, GLenum type) {
+	std::string shader_type_string = "Unknown";
+
+	if (type == GL_VERTEX_SHADER) {
+		shader_type_string = "vertex";
+	}
+	else if (type == GL_FRAGMENT_SHADER) {
+		shader_type_string = "fragment";
+	}
+
+	id_shader = glCreateShader(type);
+	auto the_code = shader_code.c_str();
+
+	glShaderSource(id_shader, 1, &the_code, nullptr);
+	glCompileShader(id_shader);
+
+	std::string log_message = {};
+	auto success = !has_compiler_error(id_shader, log_message);
+
+	if (!success) {
+		std::cout << "Could not compile " << shader_type_string << " shader. Message: " << log_message << std::endl;
+	}
+
+	return success;
+}
+
+bool compile_program(GLuint id_vertex_shader, GLuint id_fragment_shader, GLuint& id_program) {
+	id_program = glCreateProgram();
+
+	glAttachShader(id_program, id_vertex_shader);
+	glAttachShader(id_program, id_fragment_shader);
+	glLinkProgram(id_program);
+
+	std::string log_message = {};
+	auto success = !has_linker_error(id_program, log_message);
+
+	if (!success) {
+		std::cout << "Could not link program. Message: " << log_message << std::endl;
+	}
+
+	return success;
+}
+
+bool shader_create(std::filesystem::path& path_vertex, std::filesystem::path& path_fragment, GLuint& id_program) {
+	std::string code_vertex_shader = {};
+	std::string code_fragment_shader = {};
+
+	if (!file_read(path_vertex, code_vertex_shader)) {
+		return false;
+	}
+
+	if (!file_read(path_fragment, code_fragment_shader)) {
+		return false;
+	}
+
+	GLuint id_vertex_shader;
+	GLuint id_fragment_shader;
+
+	auto success_vertex_shader = compile_shader(id_vertex_shader, code_vertex_shader, GL_VERTEX_SHADER);
+	auto success_fragment_shader = compile_shader(id_fragment_shader, code_fragment_shader, GL_FRAGMENT_SHADER);
+
+	if (!success_vertex_shader || !success_fragment_shader) {
+		return false;
+	}
+
+	auto success_program = compile_program(id_vertex_shader, id_fragment_shader, id_program);
+
+	glDeleteShader(id_vertex_shader);
+	glDeleteShader(id_fragment_shader);
+
+	return success_program;
+}
+
+void shader_set_int(GLuint id_program, const std::string& variable_name, int value) {
+	glUniform1i(glGetUniformLocation(id_program, variable_name.c_str()), value);
+}
+
+void shader_use_program(GLuint id_program) {
+	glUseProgram(id_program);
+}
+
 int main(int argc, char* argv[]) {
+	const unsigned int window_width = 1200;
+	const unsigned int window_height = 900;
+	const unsigned int texture_width = window_width;
+	const unsigned int texture_height = window_height;
+	
 	GLFWwindow* window = nullptr;
 
-	if (!setup_window(SCR_WIDTH, SCR_HEIGHT, "Compute shaders", window)) {
+	if (!setup_window(window_width, window_height, "Compute shaders", window)) {
 		log_error("Could not create GLFW window");
 		return -1;
 	}
@@ -258,14 +382,21 @@ int main(int argc, char* argv[]) {
 
 	print_gl_info();
 
-	auto vertex_shader_path = "screenQuad.vs";
-	auto fragment_shader_path = "screenQuad.fs";
+	std::filesystem::path vertex_shader_path("screenQuad.vs");
+	std::filesystem::path fragment_shader_path("screenQuad.fs");
 	auto initial_shader_path = "computeShader.glsl";
 	auto solver_path = "solver.glsl";
 	auto rays_path = "rays.glsl";
 	auto marching_path = "marching.glsl";
 	auto mold_path = "mold.glsl";
-	Shader screenQuad(vertex_shader_path, fragment_shader_path);
+
+	GLuint id_program;
+
+	if (!shader_create(vertex_shader_path, fragment_shader_path, id_program)) {
+		log_error("Could not create program");
+		return -1;
+	}
+
 	ComputeShader initial_shader(initial_shader_path);
 	ComputeShader solver(solver_path);
 	ComputeShader rays(rays_path);
@@ -273,28 +404,28 @@ int main(int argc, char* argv[]) {
 	ComputeShader mold(mold_path);
 
 	mold.use();
-	mold.setInt("w", SCR_WIDTH);
-	mold.setInt("h", SCR_HEIGHT);
+	mold.setInt("w", window_width);
+	mold.setInt("h", window_height);
 	mold.setInt("action_id", 1);
 
-	screenQuad.use();
-	screenQuad.setInt("tex", 0);
+	shader_use_program(id_program);
+	shader_set_int(id_program, "tex", 0);
 
-	unsigned int texture;
+	GLuint id_texture;
 
-	glGenTextures(1, &texture);
+	glGenTextures(1, &id_texture);
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, texture);
+	glBindTexture(GL_TEXTURE_2D, id_texture);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, TEXTURE_WIDTH, TEXTURE_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, texture_width, texture_height, 0, GL_RGBA, GL_FLOAT, nullptr);
 
-	glBindImageTexture(0, texture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+	glBindImageTexture(0, id_texture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, texture);
+	glBindTexture(GL_TEXTURE_2D, id_texture);
 
 	std::vector<int> data(1000);
 
@@ -328,15 +459,15 @@ int main(int argc, char* argv[]) {
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo_shared_data);
 
 	rays.use();
-	rays.setInt("w", SCR_WIDTH);
-	rays.setInt("h", SCR_HEIGHT);
+	rays.setInt("w", window_width);
+	rays.setInt("h", window_height);
 
 	std::vector<Circle> circles(200);
 	std::vector<Block_id> block_ids(circles.size());
 	Toolbar_info toolbar_info;
 	toolbar_info = { .x = 100, .y = 300, .w = 300, .h = 500, .border_height = 50 };
 	// This is to flip the coordinate system so it works with GLSL
-	toolbar_info.y = SCR_HEIGHT - toolbar_info.y - toolbar_info.h;
+	toolbar_info.y = window_height - toolbar_info.y - toolbar_info.h;
 	std::vector<float> toolbar_pixels(3 * toolbar_info.w * toolbar_info.h);
 	enum class Toolbar_control_ids { button_toggle_alpha, slider_alpha_level, knob_value};
 	std::vector<Toolbar_control> toolbar_controls = {
@@ -533,7 +664,7 @@ int main(int argc, char* argv[]) {
 
 	{
 		for (int i = 0; i < circles.size(); i++) {
-			Circle c = { 100 + std::rand() % (SCR_WIDTH - 200), 100 + std::rand() % (SCR_HEIGHT - 200), 5, 0, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f };
+			Circle c = { 100 + std::rand() % (window_width - 200), 100 + std::rand() % (window_height - 200), 5, 0, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f };
 			c.r_square = c.r * c.r;
 			circles[i] = c;
 		}
@@ -572,8 +703,8 @@ int main(int argc, char* argv[]) {
 
 		marching.use();
 		marching.setInt("block_size", block_size);
-		marching.setInt("w", SCR_WIDTH);
-		marching.setInt("h", SCR_HEIGHT);
+		marching.setInt("w", window_width);
+		marching.setInt("h", window_height);
 		marching.setFloat("toolbar_opacity", toolbar_opacity);
 	}
 
@@ -583,8 +714,8 @@ int main(int argc, char* argv[]) {
 	int type_id = 0;
 	int num_types = 1;
 	for (auto& x : mold_particles) {
-		float pos_x = SCR_WIDTH * (std::rand() % 10000) / 10000.0f;
-		float pos_y = SCR_HEIGHT * (std::rand() % 10000) / 10000.0f;
+		float pos_x = window_width * (std::rand() % 10000) / 10000.0f;
+		float pos_y = window_height * (std::rand() % 10000) / 10000.0f;
 		float angle = 2.0f * (float)std::numbers::pi * (std::rand() % 10000) / 10000.0f;
 		x = { .pos = {pos_x,pos_y}, .angle = angle, .type = type_id };
 		type_id = (type_id + 1) % num_types;
@@ -595,7 +726,7 @@ int main(int argc, char* argv[]) {
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Mold_particle) * mold_particles.size(), (const void*)mold_particles.data(), GL_DYNAMIC_DRAW);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, ssbo_mold);
 
-	std::vector<float> mold_intensities(SCR_WIDTH * SCR_HEIGHT * num_types);
+	std::vector<float> mold_intensities(window_width * window_height* num_types);
 	GLuint ssbo_mold_intensities;
 	glGenBuffers(1, &ssbo_mold_intensities);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_mold_intensities);
@@ -603,8 +734,8 @@ int main(int argc, char* argv[]) {
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 8, ssbo_mold_intensities);
 
 	initial_shader.use();
-	initial_shader.setInt("w", SCR_WIDTH);
-	initial_shader.setInt("h", SCR_HEIGHT);
+	initial_shader.setInt("w", window_width);
+	initial_shader.setInt("h", window_height);
 
 	mold.use();
 	mold.setInt("num_types", num_types);
@@ -616,8 +747,8 @@ int main(int argc, char* argv[]) {
 	// Work groups should be a multiple of 32, so make sure to adjust the local work group sizes accordingly
 	// See https://computergraphics.stackexchange.com/questions/13449/opengl-compute-local-size-vs-performance
 
-	unsigned int workgroup_size_x = (unsigned int)ceil(TEXTURE_WIDTH / 32.0);
-	unsigned int workgroup_size_y = (unsigned int)ceil(TEXTURE_HEIGHT / 32.0);
+	unsigned int workgroup_size_x = (unsigned int)ceil(texture_width / 32.0);
+	unsigned int workgroup_size_y = (unsigned int)ceil(texture_height / 32.0);
 
 	float last_fps_time = glfwGetTime();
 	int frame_counter = 0;
@@ -646,12 +777,12 @@ int main(int argc, char* argv[]) {
 	float angle_alpha = std::numbers::pi;
 	float angle_beta = -std::numbers::pi / 8;
 
-	glfwSetCursorPos(window, SCR_WIDTH / 2, SCR_HEIGHT / 2);
+	glfwSetCursorPos(window, window_width / 2, window_height / 2);
 	mouse_move_info.has_been_read = true;
-	mouse_move_info.new_x = SCR_WIDTH / 2;
-	mouse_move_info.new_y = SCR_HEIGHT / 2;
-	mouse_move_info.old_x = SCR_WIDTH / 2;
-	mouse_move_info.old_y = SCR_HEIGHT / 2;
+	mouse_move_info.new_x = window_width / 2;
+	mouse_move_info.new_y = window_height / 2;
+	mouse_move_info.old_x = window_width / 2;
+	mouse_move_info.old_y = window_height / 2;
 	
 	int idx_dest = -1;
 	int idx_src = -1;
@@ -723,21 +854,21 @@ int main(int argc, char* argv[]) {
 				angle_beta = std::numbers::pi / 2 - 0.00001f;
 			}
 			mouse_move_info.has_been_read = true;
-			glfwSetCursorPos(window, SCR_WIDTH / 2, SCR_HEIGHT / 2);
+			glfwSetCursorPos(window, window_width / 2, window_height / 2);
 		}
 		if (shader == Shaders::funky) {
 			if (!mouse_button_info[0].has_been_read && mouse_button_info[0].is_pressed) {
 				double xpos, ypos;
 				glfwGetCursorPos(window, &xpos, &ypos);
 				background_center.x = xpos;
-				background_center.y = SCR_HEIGHT - ypos;
+				background_center.y = window_height - ypos;
 				mouse_button_info[0].has_been_read = true;
 			}
 		}
 		if (shader == Shaders::marching && !mouse_button_info[0].has_been_read && mouse_button_info[0].is_pressed) {
 			double xpos, ypos;
 			glfwGetCursorPos(window, &xpos, &ypos);
-			auto y_fixed = SCR_HEIGHT - ypos;
+			auto y_fixed = window_height - ypos;
 			bool within_toolbar_x = (xpos >= toolbar_info.x && xpos < toolbar_info.x + toolbar_info.w);
 			bool within_toolbar_y = (y_fixed >= toolbar_info.y && y_fixed < toolbar_info.y + toolbar_info.h);
 
@@ -802,7 +933,7 @@ int main(int argc, char* argv[]) {
 		if (shader == Shaders::marching && mouse_button_info[0].is_pressed && idx_active_circle > -1) {
 			double xpos, ypos;
 			glfwGetCursorPos(window, &xpos, &ypos);
-			auto y_fixed = SCR_HEIGHT - ypos;
+			auto y_fixed = window_height - ypos;
 			circles[idx_active_circle].pos[0] = xpos;
 			circles[idx_active_circle].pos[1] = y_fixed;
 			block_ids[idx_active_circle] = {(int)xpos / block_size,(int)y_fixed / block_size };
@@ -814,7 +945,7 @@ int main(int argc, char* argv[]) {
 		if (shader == Shaders::marching && mouse_button_info[0].is_pressed && moving_toolbar) {
 			double xpos, ypos;
 			glfwGetCursorPos(window, &xpos, &ypos);
-			auto y_fixed = SCR_HEIGHT - ypos;
+			auto y_fixed = window_height - ypos;
 			toolbar_info.x = xpos - toolbar_click_pos[0];
 			toolbar_info.y = y_fixed - toolbar_click_pos[1];
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_toolbar_info);
@@ -961,7 +1092,8 @@ int main(int argc, char* argv[]) {
 
 		// render image to quad
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		screenQuad.use();
+
+		shader_use_program(id_program);
 
 		renderQuad();
 		glfwSwapBuffers(window);
@@ -971,8 +1103,8 @@ int main(int argc, char* argv[]) {
 	}
 
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0); // unbind
-	glDeleteTextures(1, &texture);
-	glDeleteProgram(screenQuad.ID);
+	glDeleteTextures(1, &id_texture);
+	glDeleteProgram(id_program);
 	glDeleteProgram(initial_shader.ID);
 	glDeleteProgram(rays.ID);
 
