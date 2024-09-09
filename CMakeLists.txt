@@ -26,6 +26,7 @@ target_link_libraries(compute_shaders
 	glm::glm
 )
 
+configure_file("physics.glsl" "physics.glsl" COPYONLY)
 configure_file("solver.glsl" "solver.glsl" COPYONLY)
 configure_file("mold.glsl" "mold.glsl" COPYONLY)
 configure_file("rays.glsl" "rays.glsl" COPYONLY)

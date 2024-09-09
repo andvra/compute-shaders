@@ -20,7 +20,7 @@ float deltaTime = 0.0f; // time between current frame and last frame
 float lastFrame = 0.0f; // time of last frame
 
 auto background_center = glm::vec2(500, 500);
-enum class Shaders { funky, rays, marching, solver, mold };
+enum class Shaders { funky, rays, marching, solver, mold, physics };
 enum class Toolbar_control_type { button, slider, knob };
 
 Shaders shader = Shaders::mold;
@@ -457,6 +457,7 @@ int main(int argc, char* argv[]) {
 	auto rays_path = "rays.glsl";
 	auto marching_path = "marching.glsl";
 	auto mold_path = "mold.glsl";
+	auto physics_path = "physics.glsl";
 
 	GLuint id_program_canvas;
 	std::vector<Shader_info> shader_info = {
@@ -476,11 +477,22 @@ int main(int argc, char* argv[]) {
 	ComputeShader rays(rays_path);
 	ComputeShader marching(marching_path);
 
+	GLuint id_program_physics;
+
+	shader_info = {
+		{ physics_path, Shader_type::compute }
+	};
+
+	if (!shader_create(shader_info, id_program_physics)) {
+		log_error("Could not create physics program");
+		return -1;
+	}
+
+	GLuint id_program_mold;
+
 	shader_info = {
 		{ mold_path, Shader_type::compute }
 	};
-
-	GLuint id_program_mold;
 
 	if (!shader_create(shader_info, id_program_mold)) {
 		log_error("Could not create mold program");
@@ -872,6 +884,9 @@ int main(int argc, char* argv[]) {
 		if (key_was_just_pressed(GLFW_KEY_4)) {
 			shader = Shaders::mold;
 		}
+		if (key_was_just_pressed(GLFW_KEY_5)) {
+			shader = Shaders::physics;
+		}
 		if (key_is_pressed(GLFW_KEY_W)) {
 			the_camera += the_focus * deltaTime * 5.0f;
 		}
@@ -1078,6 +1093,13 @@ int main(int argc, char* argv[]) {
 		glfwGetCursorPos(window, &xpos, &ypos);
 
 		switch (shader) {
+		case Shaders::physics:
+		{
+			shader_use_program(id_program_physics);
+			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+		}
+		break;
 		case Shaders::mold:
 			{
 			shader_use_program(id_program_mold);
