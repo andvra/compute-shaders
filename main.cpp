@@ -2,10 +2,10 @@
 #include <numbers>
 #include <vector>
 #include <filesystem>
+#include <map>
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
-
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -281,17 +281,32 @@ bool has_compiler_error(GLuint id_shader, std::string& msg) {
 	return false;
 }
 
-bool compile_shader(GLuint& id_shader, const std::string& shader_code, GLenum type) {
-	std::string shader_type_string = "Unknown";
+enum class Shader_type {
+	vertex,
+	fragment,
+	compute
+};
 
-	if (type == GL_VERTEX_SHADER) {
-		shader_type_string = "vertex";
-	}
-	else if (type == GL_FRAGMENT_SHADER) {
-		shader_type_string = "fragment";
+bool compile_shader(GLuint& id_shader, const std::string& shader_code, Shader_type shader_type) {
+	struct Shader_type_data {
+		GLuint type;
+		std::string display_name;
+	};
+
+	std::map<Shader_type, Shader_type_data> shader_type_to_type = {
+		{Shader_type::compute,	{GL_COMPUTE_SHADER, "compute"}},
+		{Shader_type::fragment, {GL_FRAGMENT_SHADER, "fragment"}},
+		{Shader_type::vertex,	{GL_VERTEX_SHADER, "vertex"}}
+	};
+
+	if (shader_type_to_type.count(shader_type) == 0) {
+		log_error(std::format("Shader type '{}' not enabled", static_cast<int>(shader_type)));
+		return false;
 	}
 
-	id_shader = glCreateShader(type);
+	auto shader_type_data = shader_type_to_type[shader_type];
+
+	id_shader = glCreateShader(shader_type_data.type);
 	auto the_code = shader_code.c_str();
 
 	glShaderSource(id_shader, 1, &the_code, nullptr);
@@ -301,17 +316,24 @@ bool compile_shader(GLuint& id_shader, const std::string& shader_code, GLenum ty
 	auto success = !has_compiler_error(id_shader, log_message);
 
 	if (!success) {
-		std::cout << "Could not compile " << shader_type_string << " shader. Message: " << log_message << std::endl;
+		std::cout << "Could not compile " << shader_type_data.display_name << " shader. Message: " << log_message << std::endl;
 	}
 
 	return success;
 }
 
-bool compile_program(GLuint id_vertex_shader, GLuint id_fragment_shader, GLuint& id_program) {
+bool compile_program(std::vector<GLuint> ids_shaders, GLuint& id_program) {
+	if (ids_shaders.empty()) {
+		log_error("No shaders to compile");
+		return false;
+	}
+
 	id_program = glCreateProgram();
 
-	glAttachShader(id_program, id_vertex_shader);
-	glAttachShader(id_program, id_fragment_shader);
+	for (auto& id : ids_shaders) {
+		glAttachShader(id_program, id);
+	}
+
 	glLinkProgram(id_program);
 
 	std::string log_message = {};
@@ -324,32 +346,43 @@ bool compile_program(GLuint id_vertex_shader, GLuint id_fragment_shader, GLuint&
 	return success;
 }
 
-bool shader_create(std::filesystem::path& path_vertex, std::filesystem::path& path_fragment, GLuint& id_program) {
-	std::string code_vertex_shader = {};
-	std::string code_fragment_shader = {};
+struct Shader_info {
+	std::filesystem::path path;
+	Shader_type type;
+};
 
-	if (!file_read(path_vertex, code_vertex_shader)) {
+bool shader_create(std::vector<Shader_info> shader_info, GLuint& id_program) {
+	if (shader_info.empty()) {
+		log_error("No shader info");
 		return false;
 	}
 
-	if (!file_read(path_fragment, code_fragment_shader)) {
-		return false;
+	auto num_shaders = shader_info.size();
+
+	std::vector<GLuint> ids(num_shaders);
+
+	for (auto idx_shader = 0; idx_shader < num_shaders; idx_shader++) {
+		std::string code_shader = { };
+		auto& cur_shader_info = shader_info[idx_shader];
+		
+		if (!file_read(cur_shader_info.path, code_shader)) {
+			log_error(std::format("Could not read file '{}'", cur_shader_info.path.string()));
+			return false;
+		}
+
+		auto success_compile = compile_shader(ids[idx_shader], code_shader, cur_shader_info.type);
+
+		if (!success_compile) {
+			log_error(std::format("Could not compile code in file '{}'", cur_shader_info.path.string()));
+			return false;
+		}
 	}
 
-	GLuint id_vertex_shader;
-	GLuint id_fragment_shader;
+	auto success_program = compile_program(ids, id_program);
 
-	auto success_vertex_shader = compile_shader(id_vertex_shader, code_vertex_shader, GL_VERTEX_SHADER);
-	auto success_fragment_shader = compile_shader(id_fragment_shader, code_fragment_shader, GL_FRAGMENT_SHADER);
-
-	if (!success_vertex_shader || !success_fragment_shader) {
-		return false;
+	for (auto& id : ids) {
+		glDeleteShader(id);
 	}
-
-	auto success_program = compile_program(id_vertex_shader, id_fragment_shader, id_program);
-
-	glDeleteShader(id_vertex_shader);
-	glDeleteShader(id_fragment_shader);
 
 	return success_program;
 }
@@ -358,8 +391,37 @@ void shader_set_int(GLuint id_program, const std::string& variable_name, int val
 	glUniform1i(glGetUniformLocation(id_program, variable_name.c_str()), value);
 }
 
+void shader_set_float(GLuint id_program, const std::string& name, float value) {
+	glUniform1f(glGetUniformLocation(id_program, name.c_str()), value);
+}
+
 void shader_use_program(GLuint id_program) {
 	glUseProgram(id_program);
+}
+
+enum class Ssbo_index {
+	solver = 0,
+	ray_spheres = 1,
+	ray_shared_data = 2,
+	voronoi_circles = 3,
+	voronoi_blocks = 4,
+	voronoi_toolbar = 5,
+	voronoi_toolbar_colors = 6,
+	mold = 7,
+	mold_intensities = 8
+};
+
+// usage an be eg. GL_DYNAMIC_DRAW or GL_DYNAMIC_READ, see documentation
+//	TODO: Is it actually used?
+GLuint setup_ssbo(GLuint ssbo_index, GLuint usage, int data_size, void* data) {
+	GLuint idx_buffer;
+
+	glGenBuffers(1, &idx_buffer);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, idx_buffer);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, data_size, data, usage);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ssbo_index, idx_buffer);
+
+	return idx_buffer;
 }
 
 int main(int argc, char* argv[]) {
@@ -390,26 +452,42 @@ int main(int argc, char* argv[]) {
 	auto marching_path = "marching.glsl";
 	auto mold_path = "mold.glsl";
 
-	GLuint id_program;
+	GLuint id_program_canvas;
+	std::vector<Shader_info> shader_info = {
+		{ vertex_shader_path, Shader_type::vertex},
+		{ fragment_shader_path, Shader_type::fragment}
+	};
 
-	if (!shader_create(vertex_shader_path, fragment_shader_path, id_program)) {
+	if (!shader_create(shader_info, id_program_canvas)) {
 		log_error("Could not create program");
 		return -1;
 	}
 
+	// TODO: Create these shaders using shader_create (see example below, mold)
+	//	and then remove the ComputeShader class
 	ComputeShader initial_shader(initial_shader_path);
 	ComputeShader solver(solver_path);
 	ComputeShader rays(rays_path);
 	ComputeShader marching(marching_path);
-	ComputeShader mold(mold_path);
 
-	mold.use();
-	mold.setInt("w", window_width);
-	mold.setInt("h", window_height);
-	mold.setInt("action_id", 1);
+	shader_info = {
+		{ mold_path, Shader_type::compute }
+	};
 
-	shader_use_program(id_program);
-	shader_set_int(id_program, "tex", 0);
+	GLuint id_program_mold;
+
+	if (!shader_create(shader_info, id_program_mold)) {
+		log_error("Could not create mold program");
+		return -1;
+	}
+
+	shader_use_program(id_program_mold);
+	shader_set_int(id_program_mold, "w", window_width);
+	shader_set_int(id_program_mold, "h", window_height);
+	shader_set_int(id_program_mold, "action_id", 1);
+
+	shader_use_program(id_program_canvas);
+	shader_set_int(id_program_canvas, "tex", 0);
 
 	GLuint id_texture;
 
@@ -433,11 +511,7 @@ int main(int argc, char* argv[]) {
 		data[i] = i;
 	}
 
-	GLuint ssbo_solver;
-	glGenBuffers(1, &ssbo_solver);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_solver);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(int) * data.size(), data.data(), GL_DYNAMIC_READ);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo_solver);
+	auto ssbo_solver = setup_ssbo(static_cast<GLuint>(Ssbo_index::solver), GL_DYNAMIC_READ, sizeof(int) * data.size(), data.data());
 
 	std::vector<Sphere> spheres = {	// x y z rad r g b
 		{10, 2,   1, 1, 1, 0, 0},
@@ -445,25 +519,19 @@ int main(int argc, char* argv[]) {
 		{4,  2,   5, 1, 0, 0, 1},
 		{0,  2,   0, 4, 1, 1, 1},
 	};
-	GLuint ssbo_spheres;
-	glGenBuffers(1, &ssbo_spheres);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_spheres);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Sphere) * spheres.size(), (const void*)spheres.data(), GL_DYNAMIC_DRAW);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo_spheres);
+
+	auto ssbo_spheres = setup_ssbo(static_cast<GLuint>(Ssbo_index::ray_spheres), GL_DYNAMIC_DRAW, sizeof(Sphere) * spheres.size(), spheres.data());
 
 	Shared_data shared_data = { -1, -1 };
-	GLuint ssbo_shared_data;
-	glGenBuffers(1, &ssbo_shared_data);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_shared_data);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Shared_data) * 1, (const void*)&shared_data, GL_DYNAMIC_DRAW);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo_shared_data);
+
+	auto ssbo_shared_data = setup_ssbo(static_cast<GLuint>(Ssbo_index::ray_shared_data), GL_DYNAMIC_DRAW, sizeof(Shared_data), &shared_data);
 
 	rays.use();
 	rays.setInt("w", window_width);
 	rays.setInt("h", window_height);
 
-	std::vector<Circle> circles(200);
-	std::vector<Block_id> block_ids(circles.size());
+	std::vector<Circle> voronoi_circles(200);
+	std::vector<Block_id> block_ids(voronoi_circles.size());
 	Toolbar_info toolbar_info;
 	toolbar_info = { .x = 100, .y = 300, .w = 300, .h = 500, .border_height = 50 };
 	// This is to flip the coordinate system so it works with GLSL
@@ -663,43 +731,29 @@ int main(int argc, char* argv[]) {
 	};
 
 	{
-		for (int i = 0; i < circles.size(); i++) {
+		for (int i = 0; i < voronoi_circles.size(); i++) {
 			Circle c = { 100 + std::rand() % (window_width - 200), 100 + std::rand() % (window_height - 200), 5, 0, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f };
 			c.r_square = c.r * c.r;
-			circles[i] = c;
+			voronoi_circles[i] = c;
 		}
 
-		glGenBuffers(1, &ssbo_circles);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_circles);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * circles.size(), (const void*)circles.data(), GL_DYNAMIC_DRAW);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssbo_circles);
+		ssbo_circles = setup_ssbo(static_cast<GLuint>(Ssbo_index::voronoi_circles), GL_DYNAMIC_DRAW, sizeof(Circle) * voronoi_circles.size(), voronoi_circles.data());
 
 		for (int i = 0; i < block_ids.size(); i++) {
-			block_ids[i] = { (int)circles[i].pos[0] / block_size, (int)circles[i].pos[1] / block_size };
+			block_ids[i] = { (int)voronoi_circles[i].pos[0] / block_size, (int)voronoi_circles[i].pos[1] / block_size };
 		}
 
-		glGenBuffers(1, &ssbo_block_ids);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_block_ids);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Block_id) * block_ids.size(), (const void*)block_ids.data(), GL_DYNAMIC_DRAW);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, ssbo_block_ids);
-
-		glGenBuffers(1, &ssbo_toolbar_info);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_toolbar_info);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Toolbar_info) * 1, (const void*)&toolbar_info, GL_DYNAMIC_DRAW);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, ssbo_toolbar_info);
+		ssbo_block_ids = setup_ssbo(static_cast<GLuint>(Ssbo_index::voronoi_blocks), GL_DYNAMIC_DRAW, sizeof(Block_id) * block_ids.size(), block_ids.data());
+		ssbo_toolbar_info = setup_ssbo(static_cast<GLuint>(Ssbo_index::voronoi_toolbar), GL_DYNAMIC_DRAW, sizeof(Toolbar_info), &toolbar_info);
 
 		draw_toolbar(0, toolbar_info.w, 0, toolbar_info.h);
-
 		draw_chars("one two three 1 2 3", 55, 50);
 
 		for (auto& c : toolbar_controls) {
 			draw_control(c, false);
 		}
 
-		glGenBuffers(1, &ssbo_toolbar_colors);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_toolbar_colors);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(float) * toolbar_pixels.size(), (const void*)toolbar_pixels.data(), GL_DYNAMIC_DRAW);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, ssbo_toolbar_colors);
+		ssbo_toolbar_colors = setup_ssbo(static_cast<GLuint>(Ssbo_index::voronoi_toolbar_colors), GL_DYNAMIC_DRAW, sizeof(float) * toolbar_pixels.size(), toolbar_pixels.data());
 
 		marching.use();
 		marching.setInt("block_size", block_size);
@@ -720,25 +774,19 @@ int main(int argc, char* argv[]) {
 		x = { .pos = {pos_x,pos_y}, .angle = angle, .type = type_id };
 		type_id = (type_id + 1) % num_types;
 	}
-	GLuint ssbo_mold;
-	glGenBuffers(1, &ssbo_mold);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_mold);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Mold_particle) * mold_particles.size(), (const void*)mold_particles.data(), GL_DYNAMIC_DRAW);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, ssbo_mold);
+
+	auto ssbo_mold = setup_ssbo(static_cast<GLuint>(Ssbo_index::mold), GL_DYNAMIC_DRAW, sizeof(Mold_particle) * mold_particles.size(), mold_particles.data());
 
 	std::vector<float> mold_intensities(window_width * window_height* num_types);
-	GLuint ssbo_mold_intensities;
-	glGenBuffers(1, &ssbo_mold_intensities);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_mold_intensities);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(float) * mold_intensities.size(), (const void*)mold_intensities.data(), GL_DYNAMIC_DRAW);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 8, ssbo_mold_intensities);
+
+	auto ssbo_mold_intensities = setup_ssbo(static_cast<GLuint>(Ssbo_index::mold_intensities), GL_DYNAMIC_DRAW, sizeof(float) * mold_intensities.size(), mold_intensities.data());
 
 	initial_shader.use();
 	initial_shader.setInt("w", window_width);
 	initial_shader.setInt("h", window_height);
 
-	mold.use();
-	mold.setInt("num_types", num_types);
+	shader_use_program(id_program_mold);
+	shader_set_int(id_program_mold, "num_types", num_types);
 
 	glfwSetMouseButtonCallback(window, mouse_button_callback);
 	glfwSetKeyCallback(window, key_callback);
@@ -920,9 +968,9 @@ int main(int argc, char* argv[]) {
 				}
 			}
 			else {
-				for (int i = 0; i < circles.size(); i++) {
-					auto d_square = (xpos - circles[i].pos[0]) * (xpos - circles[i].pos[0]) + (y_fixed - circles[i].pos[1]) * (y_fixed - circles[i].pos[1]);
-					auto r_square = circles[i].r * circles[i].r;
+				for (int i = 0; i < voronoi_circles.size(); i++) {
+					auto d_square = (xpos - voronoi_circles[i].pos[0]) * (xpos - voronoi_circles[i].pos[0]) + (y_fixed - voronoi_circles[i].pos[1]) * (y_fixed - voronoi_circles[i].pos[1]);
+					auto r_square = voronoi_circles[i].r * voronoi_circles[i].r;
 					if (d_square < r_square) {
 						idx_active_circle = i;
 					}
@@ -934,11 +982,11 @@ int main(int argc, char* argv[]) {
 			double xpos, ypos;
 			glfwGetCursorPos(window, &xpos, &ypos);
 			auto y_fixed = window_height - ypos;
-			circles[idx_active_circle].pos[0] = xpos;
-			circles[idx_active_circle].pos[1] = y_fixed;
+			voronoi_circles[idx_active_circle].pos[0] = xpos;
+			voronoi_circles[idx_active_circle].pos[1] = y_fixed;
 			block_ids[idx_active_circle] = {(int)xpos / block_size,(int)y_fixed / block_size };
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_circles);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * idx_active_circle, sizeof(Circle), &circles[idx_active_circle]);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * idx_active_circle, sizeof(Circle), &voronoi_circles[idx_active_circle]);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_block_ids);
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Block_id) * idx_active_circle, sizeof(Block_id), &block_ids[idx_active_circle]);
 		}
@@ -984,44 +1032,44 @@ int main(int argc, char* argv[]) {
 			idx_active_control = -1;
 		}
 		if (shader == Shaders::marching) {
-			if (circles.size() >= 2) {
+			if (voronoi_circles.size() >= 2) {
 				if (idx_src == -1) {
-					idx_src = std::rand() % circles.size();
+					idx_src = std::rand() % voronoi_circles.size();
 					// Setting t_move_end to zero will trigger a new destination
 					t_move_end = 0;
 				}
 				if (currentFrame > t_move_end) {
 					if (idx_dest != -1) {
 						// Don't move source circle when initializing the app
-						circles[idx_src].pos[0] = circles[idx_dest].pos[0];
-						circles[idx_src].pos[1] = circles[idx_dest].pos[1];
+						voronoi_circles[idx_src].pos[0] = voronoi_circles[idx_dest].pos[0];
+						voronoi_circles[idx_src].pos[1] = voronoi_circles[idx_dest].pos[1];
 						glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_circles);
-						glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * idx_src, sizeof(Circle), &circles[idx_src]);
+						glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * idx_src, sizeof(Circle), &voronoi_circles[idx_src]);
 						glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_block_ids);
 						glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Block_id) * idx_src, sizeof(Block_id), &block_ids[idx_dest]);
 						idx_src = idx_dest;
 					}
-					while ((idx_dest = std::rand() % circles.size()) == idx_src);
-					auto x1 = circles[idx_dest].pos[0];
-					auto y1 = circles[idx_dest].pos[1];
-					auto x2 = circles[idx_src].pos[0];
-					auto y2 = circles[idx_src].pos[1];
+					while ((idx_dest = std::rand() % voronoi_circles.size()) == idx_src);
+					auto x1 = voronoi_circles[idx_dest].pos[0];
+					auto y1 = voronoi_circles[idx_dest].pos[1];
+					auto x2 = voronoi_circles[idx_src].pos[0];
+					auto y2 = voronoi_circles[idx_src].pos[1];
 					float d = std::sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
 					t_move_end = currentFrame + d * 0.005f;
 					t_move_start = currentFrame;
-					auto diff_x = circles[idx_dest].pos[0] - circles[idx_src].pos[0];
-					auto diff_y = circles[idx_dest].pos[1] - circles[idx_src].pos[1];
-					move_origin[0] = circles[idx_src].pos[0];
-					move_origin[1] = circles[idx_src].pos[1];
+					auto diff_x = voronoi_circles[idx_dest].pos[0] - voronoi_circles[idx_src].pos[0];
+					auto diff_y = voronoi_circles[idx_dest].pos[1] - voronoi_circles[idx_src].pos[1];
+					move_origin[0] = voronoi_circles[idx_src].pos[0];
+					move_origin[1] = voronoi_circles[idx_src].pos[1];
 					move_vector[0] = diff_x;
 					move_vector[1] = diff_y;
 				}
 				auto t = (currentFrame - t_move_start) / (t_move_end - t_move_start);
-				circles[idx_src].pos[0] = move_origin[0] + t * move_vector[0];
-				circles[idx_src].pos[1] = move_origin[1] + t * move_vector[1];
-				block_ids[idx_src] = { (int)circles[idx_src].pos[0] / block_size, (int)circles[idx_src].pos[1] / block_size };
+				voronoi_circles[idx_src].pos[0] = move_origin[0] + t * move_vector[0];
+				voronoi_circles[idx_src].pos[1] = move_origin[1] + t * move_vector[1];
+				block_ids[idx_src] = { (int)voronoi_circles[idx_src].pos[0] / block_size, (int)voronoi_circles[idx_src].pos[1] / block_size };
 				glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_circles);
-				glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * idx_src, sizeof(Circle), &circles[idx_src]);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * idx_src, sizeof(Circle), &voronoi_circles[idx_src]);
 				glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_block_ids);
 				glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Block_id) * idx_src, sizeof(Block_id), &block_ids[idx_src]);
 			}
@@ -1033,12 +1081,12 @@ int main(int argc, char* argv[]) {
 		switch (shader) {
 		case Shaders::mold:
 			{
-			mold.use();
-			mold.setFloat("t_tot", currentFrame);
-			mold.setFloat("t_delta", deltaTime);
+			shader_use_program(id_program_mold);
+			shader_set_float(id_program_mold, "t_tot", currentFrame);
+			shader_set_float(id_program_mold, "t_delta", deltaTime);
 			int tot_num_actions = 4; // Must sync with the number of actions in mold::main()
 			for (int action_id = 0; action_id < tot_num_actions; action_id++) {
-				mold.setInt("action_id", action_id);
+				shader_set_int(id_program_mold, "action_id", action_id);
 				glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
 				//glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
@@ -1093,7 +1141,7 @@ int main(int argc, char* argv[]) {
 		// render image to quad
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		shader_use_program(id_program);
+		shader_use_program(id_program_canvas);
 
 		renderQuad();
 		glfwSwapBuffers(window);
@@ -1104,7 +1152,7 @@ int main(int argc, char* argv[]) {
 
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0); // unbind
 	glDeleteTextures(1, &id_texture);
-	glDeleteProgram(id_program);
+	glDeleteProgram(id_program_canvas);
 	glDeleteProgram(initial_shader.ID);
 	glDeleteProgram(rays.ID);
 
