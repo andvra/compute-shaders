@@ -399,6 +399,7 @@ void shader_use_program(GLuint id_program) {
 	glUseProgram(id_program);
 }
 
+// These indices needs to be synched with the bindings used in the compute shaders
 enum class Ssbo_index {
 	solver = 0,
 	ray_spheres = 1,
