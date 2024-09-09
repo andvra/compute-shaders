@@ -182,8 +182,11 @@ std::vector<unsigned char> read_bmp(std::string filename)
 	return data;
 }
 
-int main(int argc, char* argv[])
-{
+void log_error(std::string msg) {
+	std::cout << msg << std::endl;
+}
+
+bool setup_window(int width, int height, std::string title, GLFWwindow*& window) {
 	glfwInit();
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -193,24 +196,31 @@ int main(int argc, char* argv[])
 	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-	GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Compute shaders", NULL, NULL);
-	if (window == NULL)
-	{
+	window = glfwCreateWindow(width, height, title.c_str(), NULL, NULL);
+
+	if (window == nullptr) {
 		std::cout << "Failed to create GLFW window" << std::endl;
 		glfwTerminate();
-		return -1;
+		return false;
 	}
-
+	
 	glfwMakeContextCurrent(window);
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 	glfwSwapInterval(0);
 
-	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
-	{
-		std::cout << "Failed to initialize GLAD" << std::endl;
-		return -1;
+	return true;
+}
+
+bool load_opengl() {
+	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+		log_error("Failed to initialize GLAD");
+		return false;
 	}
 
+	return true;
+}
+
+void print_gl_info() {
 	int max_compute_work_group_count[3];
 	int max_compute_work_group_size[3];
 	int max_compute_work_group_invocations;
@@ -231,26 +241,36 @@ int main(int argc, char* argv[])
 	std::cout << "maximum size of a work group in Z dimension " << max_compute_work_group_size[2] << std::endl;
 
 	std::cout << "Number of invocations in a single local work group that may be dispatched to a compute shader " << max_compute_work_group_invocations << std::endl;
+}
 
-	std::filesystem::path root_folder(R"(C:\Users\andre\source\repos\compute-shaders)");
-	if (!std::filesystem::exists(root_folder)) {
-		std::cerr << "Could not find folder " << root_folder.string() << std::endl;
-		return 1;
+int main(int argc, char* argv[]) {
+	GLFWwindow* window = nullptr;
+
+	if (!setup_window(SCR_WIDTH, SCR_HEIGHT, "Compute shaders", window)) {
+		log_error("Could not create GLFW window");
+		return -1;
 	}
 
-	auto vertex_shader_path = (root_folder / "screenQuad.vs").string();
-	auto fragment_shader_path = (root_folder / "screenQuad.fs").string();
-	auto initial_shader_path = (root_folder / "computeShader.glsl").string();
-	auto solver_path = (root_folder / "solver.glsl").string();
-	auto rays_path = (root_folder / "rays.glsl").string();
-	auto marching_path = (root_folder / "marching.glsl").string();
-	auto mold_path = (root_folder / "mold.glsl").string();
-	Shader screenQuad(vertex_shader_path.c_str(), fragment_shader_path.c_str());
-	ComputeShader initial_shader(initial_shader_path.c_str());
-	ComputeShader solver(solver_path.c_str());
-	ComputeShader rays(rays_path.c_str());
-	ComputeShader marching(marching_path.c_str());
-	ComputeShader mold(mold_path.c_str());
+	if (!load_opengl()) {
+		log_error("Could not initialize OpenGL pointers");
+		return -1;
+	}
+
+	print_gl_info();
+
+	auto vertex_shader_path = "screenQuad.vs";
+	auto fragment_shader_path = "screenQuad.fs";
+	auto initial_shader_path = "computeShader.glsl";
+	auto solver_path = "solver.glsl";
+	auto rays_path = "rays.glsl";
+	auto marching_path = "marching.glsl";
+	auto mold_path = "mold.glsl";
+	Shader screenQuad(vertex_shader_path, fragment_shader_path);
+	ComputeShader initial_shader(initial_shader_path);
+	ComputeShader solver(solver_path);
+	ComputeShader rays(rays_path);
+	ComputeShader marching(marching_path);
+	ComputeShader mold(mold_path);
 
 	mold.use();
 	mold.setInt("w", SCR_WIDTH);
@@ -339,7 +359,7 @@ int main(int argc, char* argv[])
 	float toolbar_opacity = toolbar_opacity_min + (1 - toolbar_opacity_min) * ((float)(toolbar_controls[slider_id].val_cur - toolbar_controls[slider_id].val_min) / (toolbar_controls[slider_id].val_max - toolbar_controls[slider_id].val_min));
 	int knob_down_start_x = 0;
 	int knob_down_start_val = 0;
-	std::string font_file = (root_folder / "font_bitmap_16.bmp").string();
+	std::string font_file = "font_bitmap_16.bmp";
 
 	auto font_texture = read_bmp((char*)font_file.c_str());
 

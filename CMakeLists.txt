@@ -25,3 +25,12 @@ target_link_libraries(compute_shaders
 	glfw
 	glm::glm
 )
+
+configure_file("solver.glsl" "solver.glsl" COPYONLY)
+configure_file("mold.glsl" "mold.glsl" COPYONLY)
+configure_file("rays.glsl" "rays.glsl" COPYONLY)
+configure_file("screenQuad.vs" "screenQuad.vs" COPYONLY)
+configure_file("screenQuad.fs" "screenQuad.fs" COPYONLY)
+configure_file("computeShader.glsl" "computeShader.glsl" COPYONLY)
+configure_file("marching.glsl" "marching.glsl" COPYONLY)
+configure_file("font_bitmap_16.bmp" "font_bitmap_16.bmp" COPYONLY)
