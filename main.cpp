@@ -3,14 +3,13 @@
 #include <vector>
 #include <filesystem>
 #include <map>
+#include <fstream>
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-
-#include "shader_c.h"
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void renderQuad();
@@ -96,7 +95,11 @@ Key_info key_info[512] = {}; // GLFW_KEY_ESCAPE is 256 for some reason
 Mouse_button_info mouse_button_info[2] = {};
 Mouse_move_info mouse_move_info = {};
 
-void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
+void log_error(std::string msg) {
+	std::cout << msg << std::endl;
+}
+
+void mouse_button_callback(GLFWwindow*, int button, int action, int)
 {
 	enum class Mouse_actions { up, down };
 
@@ -117,13 +120,13 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 	}
 }
 
-void mouse_move_callback(GLFWwindow* window, double xpos, double ypos) {
-	mouse_move_info.new_x = xpos;
-	mouse_move_info.new_y = ypos;
+void mouse_move_callback(GLFWwindow*, double xpos, double ypos) {
+	mouse_move_info.new_x = static_cast<int>(xpos);
+	mouse_move_info.new_y = static_cast<int>(ypos);
 	mouse_move_info.has_been_read = false;
 }
 
-void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+void key_callback(GLFWwindow*, int key, int, int action, int) {
 	enum class Key_actions { up, down, holding };
 
 	auto num_allocated_keys = sizeof(key_info) / sizeof(Key_info);
@@ -143,39 +146,51 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 	}
 }
 
-std::vector<unsigned char> read_bmp(std::string filename)
-{
-	FILE* f = fopen(filename.c_str(), "rb");
-	unsigned char info[54];
+bool read_file_binary(std::filesystem::path& path, std::vector<char>& data) {
+	std::ifstream file(path, std::ios::binary | std::ios::ate);
 
-	// read the 54-byte header
-	fread(info, sizeof(unsigned char), 54, f);
-
-	// extract image height and width from header
-	int width = *(int*)&info[18];
-	int height = *(int*)&info[22];
-
-	// allocate 3 bytes per pixel
-	int size = 3 * width * height;
-	std::vector<unsigned char> data(size);
-
-	// read the rest of the data at once
-	fread(data.data(), sizeof(unsigned char), size, f);
-	fclose(f);
-
-	for (size_t i = 0; i < size; i += 3)
-	{
-		// flip the order of every 3 bytes
-		auto tmp = data[i];
-		data[i] = data[i + 2];
-		data[i + 2] = tmp;
+	if (!file.is_open()) {
+		log_error(std::format("Could not read file ''", path.string()));
+		return false;
 	}
 
-	return data;
+	std::streamsize size = file.tellg();
+	file.seekg(0, std::ios::beg);
+
+	data = std::vector<char>(size);
+
+	auto success = false;
+
+	if (file.read(data.data(), size)) {
+		success = true;
+	}
+
+	return success;
 }
 
-void log_error(std::string msg) {
-	std::cout << msg << std::endl;
+struct Bmp_file {
+	// TODO: Parse complete BMP header
+	int width;
+	int height;
+	std::vector<unsigned char> data;
+};
+
+Bmp_file read_bmp(std::filesystem::path& filename) {
+	std::vector<char> data = { };
+
+	read_file_binary(filename, data);
+
+	int width = *(int*)&data[18];
+	int height = *(int*)&data[22];
+
+	auto header_size = 54;
+
+	Bmp_file ret = {};
+	ret.width = width;
+	ret.height = height;
+	ret.data = std::vector<unsigned char>(data.begin() + header_size, data.end());
+
+	return ret;
 }
 
 bool setup_window(int width, int height, std::string title, GLFWwindow*& window) {
@@ -259,6 +274,7 @@ bool has_linker_error(GLuint id_shader, std::string& msg) {
 
 	if (!success) {
 		glGetProgramInfoLog(id_shader, max_size_log_message, NULL, log_message);
+		msg = log_message;
 		return true;
 	}
 
@@ -387,12 +403,24 @@ bool shader_create(std::vector<Shader_info> shader_info, GLuint& id_program) {
 	return success_program;
 }
 
+void shader_set_bool(GLuint id_program, const std::string& variable_name, bool value) {
+	glUniform1i(glGetUniformLocation(id_program, variable_name.c_str()), (int)value);
+}
+
 void shader_set_int(GLuint id_program, const std::string& variable_name, int value) {
 	glUniform1i(glGetUniformLocation(id_program, variable_name.c_str()), value);
 }
 
-void shader_set_float(GLuint id_program, const std::string& name, float value) {
-	glUniform1f(glGetUniformLocation(id_program, name.c_str()), value);
+void shader_set_float(GLuint id_program, const std::string& variable_name, float value) {
+	glUniform1f(glGetUniformLocation(id_program, variable_name.c_str()), value);
+}
+
+void shader_set_vec2(GLuint id_program, const std::string& variable_name, const glm::vec2& value) {
+	glUniform2fv(glGetUniformLocation(id_program, variable_name.c_str()), 1, &value[0]);
+}
+
+void shader_set_vec3(GLuint id_program, const std::string& variable_name, const glm::vec3& value) {
+	glUniform3fv(glGetUniformLocation(id_program, variable_name.c_str()), 1, &value[0]);
 }
 
 void shader_use_program(GLuint id_program) {
@@ -414,7 +442,7 @@ enum class Ssbo_index {
 
 // usage an be eg. GL_DYNAMIC_DRAW or GL_DYNAMIC_READ, see documentation
 //	TODO: Is it actually used?
-GLuint setup_ssbo(GLuint ssbo_index, GLuint usage, int data_size, void* data) {
+GLuint setup_ssbo(GLuint ssbo_index, GLuint usage, GLsizeiptr data_size, void* data) {
 	GLuint idx_buffer;
 
 	glGenBuffers(1, &idx_buffer);
@@ -430,12 +458,12 @@ void ssbo_update(GLuint idx_buffer, GLintptr offset, GLsizeiptr size, void* data
 	glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, size, data);
 }
 
-int main(int argc, char* argv[]) {
+int main(int, char* []) {
 	const unsigned int window_width = 1200;
 	const unsigned int window_height = 900;
 	const unsigned int texture_width = window_width;
 	const unsigned int texture_height = window_height;
-	
+
 	GLFWwindow* window = nullptr;
 
 	if (!setup_window(window_width, window_height, "Compute shaders", window)) {
@@ -452,51 +480,55 @@ int main(int argc, char* argv[]) {
 
 	std::filesystem::path vertex_shader_path("screenQuad.vs");
 	std::filesystem::path fragment_shader_path("screenQuad.fs");
-	auto initial_shader_path = "computeShader.glsl";
-	auto solver_path = "solver.glsl";
-	auto rays_path = "rays.glsl";
-	auto marching_path = "marching.glsl";
-	auto mold_path = "mold.glsl";
-	auto physics_path = "physics.glsl";
+	std::filesystem::path initial_shader_path("computeShader.glsl");
+	std::filesystem::path solver_path("solver.glsl");
+	std::filesystem::path rays_path("rays.glsl");
+	std::filesystem::path marching_path("marching.glsl");
+	std::filesystem::path mold_path("mold.glsl");
+	std::filesystem::path physics_path("physics.glsl");
 
 	GLuint id_program_canvas;
-	std::vector<Shader_info> shader_info = {
+
+	std::vector<Shader_info> shader_info_base = {
 		{ vertex_shader_path, Shader_type::vertex},
 		{ fragment_shader_path, Shader_type::fragment}
 	};
 
-	if (!shader_create(shader_info, id_program_canvas)) {
+	if (!shader_create(shader_info_base, id_program_canvas)) {
 		log_error("Could not create program");
 		return -1;
 	}
 
-	// TODO: Create these shaders using shader_create (see example below, mold)
-	//	and then remove the ComputeShader class
-	ComputeShader initial_shader(initial_shader_path);
-	ComputeShader solver(solver_path);
-	ComputeShader rays(rays_path);
-	ComputeShader marching(marching_path);
-
 	GLuint id_program_physics;
-
-	shader_info = {
-		{ physics_path, Shader_type::compute }
-	};
-
-	if (!shader_create(shader_info, id_program_physics)) {
-		log_error("Could not create physics program");
-		return -1;
-	}
-
 	GLuint id_program_mold;
+	GLuint id_program_rays;
+	GLuint id_program_voronoi;
+	GLuint id_program_solver;
+	GLuint id_program_funky;
 
-	shader_info = {
-		{ mold_path, Shader_type::compute }
+	struct Compute_shader_info {
+		std::string display_name;
+		GLuint& id_program;
+		std::filesystem::path path;
 	};
 
-	if (!shader_create(shader_info, id_program_mold)) {
-		log_error("Could not create mold program");
-		return -1;
+	std::vector<Compute_shader_info> compute_shader_info = {
+		{"physics",	id_program_physics,	physics_path},
+		{"mold",	id_program_mold,	mold_path},
+		{"rays",	id_program_rays,	rays_path},
+		{"voronoi",	id_program_voronoi,	marching_path},
+		{"solver",	id_program_solver,	solver_path},
+		{"funky",	id_program_funky,	initial_shader_path},
+	};
+	
+	for (auto& x : compute_shader_info) {
+		Shader_info shader_info = {};
+		shader_info.path = x.path;
+		shader_info.type = Shader_type::compute;
+		if (!shader_create({ shader_info }, x.id_program)) {
+			log_error(std::format("Could not create program '{}'", x.display_name));
+			return -1;
+		}
 	}
 
 	shader_use_program(id_program_mold);
@@ -538,15 +570,15 @@ int main(int argc, char* argv[]) {
 		{0,  2,   0, 4, 1, 1, 1},
 	};
 
-	auto ssbo_spheres = setup_ssbo(static_cast<GLuint>(Ssbo_index::ray_spheres), GL_DYNAMIC_DRAW, sizeof(Sphere) * spheres.size(), spheres.data());
+	setup_ssbo(static_cast<GLuint>(Ssbo_index::ray_spheres), GL_DYNAMIC_DRAW, sizeof(Sphere) * spheres.size(), spheres.data());
 
 	Shared_data shared_data = { -1, -1 };
 
 	auto ssbo_shared_data = setup_ssbo(static_cast<GLuint>(Ssbo_index::ray_shared_data), GL_DYNAMIC_DRAW, sizeof(Shared_data), &shared_data);
 
-	rays.use();
-	rays.setInt("w", window_width);
-	rays.setInt("h", window_height);
+	shader_use_program(id_program_rays);
+	shader_set_int(id_program_rays, "w", window_width);
+	shader_set_int(id_program_rays, "h", window_height);
 
 	std::vector<Circle> voronoi_circles(200);
 	std::vector<Block_id> block_ids(voronoi_circles.size());
@@ -576,16 +608,17 @@ int main(int argc, char* argv[]) {
 	float toolbar_opacity = toolbar_opacity_min + (1 - toolbar_opacity_min) * ((float)(toolbar_controls[slider_id].val_cur - toolbar_controls[slider_id].val_min) / (toolbar_controls[slider_id].val_max - toolbar_controls[slider_id].val_min));
 	int knob_down_start_x = 0;
 	int knob_down_start_val = 0;
-	std::string font_file = "font_bitmap_16.bmp";
+	std::filesystem::path font_file("font_bitmap_16.bmp");
 
-	auto font_texture = read_bmp((char*)font_file.c_str());
+	auto font_texture = read_bmp(font_file);
 
 	auto hack_to_correct_font_bitmap_colors = [&font_texture]() {
+		auto& img_data = font_texture.data;
 		// The bitmap has blue-ish colors. We want pure black/white, so fix accordingly
-		for (int idx_font_color = 0; idx_font_color < font_texture.size(); idx_font_color += 3) {
-			unsigned char& c1 = font_texture[idx_font_color + 0];
-			unsigned char& c2 = font_texture[idx_font_color + 1];
-			unsigned char& c3 = font_texture[idx_font_color + 2];
+		for (int idx_font_color = 0; idx_font_color < img_data.size(); idx_font_color += 3) {
+			unsigned char& c1 = img_data[idx_font_color + 0];
+			unsigned char& c2 = img_data[idx_font_color + 1];
+			unsigned char& c3 = img_data[idx_font_color + 2];
 			int tot_diff = std::abs(c1 - 255) + std::abs(c2 - 255) + std::abs(c3 - 255);
 			if (tot_diff < 100) {
 				c1 = 255;
@@ -608,6 +641,7 @@ int main(int argc, char* argv[]) {
 		int num_chars_per_row = 16;
 		int num_rows = 8;
 		int tot_width = char_width * num_chars_per_row;
+		auto& img_data = font_texture.data;
 		for (auto idx_char : s) {
 			int char_row = idx_char / num_chars_per_row;
 			int char_col = idx_char - char_row * num_chars_per_row;
@@ -626,7 +660,7 @@ int main(int argc, char* argv[]) {
 					auto font_texture_x = col_offset + i;
 					auto font_texture_y = j + row_offset;
 					for (int c = 0; c < 3; c++) {
-						toolbar_pixels[3 * (toolbar_x + toolbar_y * toolbar_info.w) + c] = font_texture[3 * (font_texture_x + font_texture_y * tot_width) + c] / 255.0f;
+						toolbar_pixels[3 * (toolbar_x + toolbar_y * toolbar_info.w) + c] = img_data[3 * (font_texture_x + font_texture_y * tot_width) + c] / 255.0f;
 					}
 				}
 			}
@@ -642,7 +676,7 @@ int main(int argc, char* argv[]) {
 				int idx_pixel = 3 * (col + row * toolbar_info.w);
 				if (row_fixed >= toolbar_info.border_height) {
 					color[0] = 0.4f;
-					color[1] = std::sin(idx_pixel) * std::sin(idx_pixel);
+					color[1] = std::sinf(static_cast<float>(idx_pixel)) * std::sinf(static_cast<float>(idx_pixel));
 					color[2] = (idx_pixel % 1000) / 1000.0f;
 				}
 				else {
@@ -700,12 +734,12 @@ int main(int argc, char* argv[]) {
 				float diff_from_full_circle_rad = 0.5f;
 				float angle_rad = diff_from_full_circle_rad + factor * (2.0f * 3.1415f - 2.0f * diff_from_full_circle_rad);
 				float dot_r = 5;
-				int dot_center_x = center_x + (r - dot_r) * std::sin(-angle_rad);
-				int dot_start_x = dot_center_x - dot_r;
-				int dot_end_x = dot_start_x + dot_r;
-				int dot_center_y = center_y + (r - dot_r) * std::cos(angle_rad);
-				int dot_start_y = dot_center_y - dot_r;
-				int dot_end_y = dot_start_y + dot_r;
+				int dot_center_x = center_x + static_cast<int>((r - dot_r) * std::sin(-angle_rad));
+				int dot_start_x = static_cast<int>(dot_center_x - dot_r);
+				int dot_end_x = static_cast<int>(dot_start_x + dot_r);
+				int dot_center_y = center_y + static_cast<int>((r - dot_r) * std::cos(angle_rad));
+				int dot_start_y = static_cast<int>(dot_center_y - dot_r);
+				int dot_end_y = static_cast<int>(dot_start_y + dot_r);
 				for (int col = dot_start_x; col <= dot_end_x; col++) {
 					for (int row = dot_start_y; row <= dot_end_y; row++) {
 						int row_fixed = toolbar_info.h - row - 1;
@@ -725,7 +759,7 @@ int main(int argc, char* argv[]) {
 				float factor = (c.val_cur - c.val_min) / (float)(c.val_max - c.val_min);
 				int available_pixels = c.w - anchor_width;
 
-				anchor_min_x = c.x + factor * available_pixels;
+				anchor_min_x = c.x + static_cast<int>(factor * available_pixels);
 				anchor_max_x = anchor_min_x + anchor_width;
 			}
 			for (int col = c.x; col < c.x + c.w; col++) {
@@ -749,8 +783,25 @@ int main(int argc, char* argv[]) {
 
 	{
 		for (int i = 0; i < voronoi_circles.size(); i++) {
-			Circle c = { 100 + std::rand() % (window_width - 200), 100 + std::rand() % (window_height - 200), 5, 0, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f, std::rand() % 100 / 100.0f };
-			c.r_square = c.r * c.r;
+			float pos[2];
+			float radius;
+			float radius_square;
+			float color[3];
+			pos[0] = 100.0f + std::rand() % (window_width - 200);
+			pos[1] = 100.0f + std::rand() % (window_height - 200);
+			radius = 5.0f;
+			radius_square = radius * radius;
+			color[0] = std::rand() % 100 / 100.0f;
+			color[1] = std::rand() % 100 / 100.0f;
+			color[2] = std::rand() % 100 / 100.0f;
+			Circle c = {};
+			c.r = radius;
+			c.r_square = radius_square;
+			c.color[0] = color[0];
+			c.color[1] = color[1];
+			c.color[2] = color[2];
+			c.pos[0] = pos[0];
+			c.pos[1] = pos[1];
 			voronoi_circles[i] = c;
 		}
 
@@ -772,11 +823,11 @@ int main(int argc, char* argv[]) {
 
 		ssbo_toolbar_colors = setup_ssbo(static_cast<GLuint>(Ssbo_index::voronoi_toolbar_colors), GL_DYNAMIC_DRAW, sizeof(float) * toolbar_pixels.size(), toolbar_pixels.data());
 
-		marching.use();
-		marching.setInt("block_size", block_size);
-		marching.setInt("w", window_width);
-		marching.setInt("h", window_height);
-		marching.setFloat("toolbar_opacity", toolbar_opacity);
+		shader_use_program(id_program_voronoi);
+		shader_set_int(id_program_voronoi, "block_size", block_size);
+		shader_set_int(id_program_voronoi, "w", window_width);
+		shader_set_int(id_program_voronoi, "h", window_height);
+		shader_set_float(id_program_voronoi, "toolbar_opacity", toolbar_opacity);
 	}
 
 	size_t num_mold_particles = 25'000;
@@ -787,20 +838,20 @@ int main(int argc, char* argv[]) {
 	for (auto& x : mold_particles) {
 		float pos_x = window_width * (std::rand() % 10000) / 10000.0f;
 		float pos_y = window_height * (std::rand() % 10000) / 10000.0f;
-		float angle = 2.0f * (float)std::numbers::pi * (std::rand() % 10000) / 10000.0f;
+		float angle = 2.0f * std::numbers::pi_v<float> * (std::rand() % 10000) / 10000.0f;
 		x = { .pos = {pos_x,pos_y}, .angle = angle, .type = type_id };
 		type_id = (type_id + 1) % num_types;
 	}
 
-	auto ssbo_mold = setup_ssbo(static_cast<GLuint>(Ssbo_index::mold), GL_DYNAMIC_DRAW, sizeof(Mold_particle) * mold_particles.size(), mold_particles.data());
+	setup_ssbo(static_cast<GLuint>(Ssbo_index::mold), GL_DYNAMIC_DRAW, sizeof(Mold_particle) * mold_particles.size(), mold_particles.data());
 
 	std::vector<float> mold_intensities(window_width * window_height* num_types);
 
-	auto ssbo_mold_intensities = setup_ssbo(static_cast<GLuint>(Ssbo_index::mold_intensities), GL_DYNAMIC_DRAW, sizeof(float) * mold_intensities.size(), mold_intensities.data());
+	setup_ssbo(static_cast<GLuint>(Ssbo_index::mold_intensities), GL_DYNAMIC_DRAW, sizeof(float) * mold_intensities.size(), mold_intensities.data());
 
-	initial_shader.use();
-	initial_shader.setInt("w", window_width);
-	initial_shader.setInt("h", window_height);
+	shader_use_program(id_program_funky);
+	shader_set_int(id_program_funky, "w", window_width);
+	shader_set_int(id_program_funky, "h", window_height);
 
 	shader_use_program(id_program_mold);
 	shader_set_int(id_program_mold, "num_types", num_types);
@@ -815,7 +866,7 @@ int main(int argc, char* argv[]) {
 	unsigned int workgroup_size_x = (unsigned int)ceil(texture_width / 32.0);
 	unsigned int workgroup_size_y = (unsigned int)ceil(texture_height / 32.0);
 
-	float last_fps_time = glfwGetTime();
+	float last_fps_time = static_cast<float>(glfwGetTime());
 	int frame_counter = 0;
 
 	auto key_was_just_pressed = [](int key_code) -> bool {
@@ -839,8 +890,8 @@ int main(int argc, char* argv[]) {
 
 	glm::vec3 the_camera = glm::vec3(0, 15, 15);
 	glm::vec3 the_focus = glm::vec3(10, 0, 10);
-	float angle_alpha = std::numbers::pi;
-	float angle_beta = -std::numbers::pi / 8;
+	auto angle_alpha = std::numbers::pi_v<float>;
+	auto angle_beta = -std::numbers::pi_v<float> / 8;
 
 	glfwSetCursorPos(window, window_width / 2, window_height / 2);
 	mouse_move_info.has_been_read = true;
@@ -858,7 +909,7 @@ int main(int argc, char* argv[]) {
 
 	while (!glfwWindowShouldClose(window))
 	{
-		float currentFrame = glfwGetTime();
+		float currentFrame = static_cast<float>(glfwGetTime());
 		deltaTime = currentFrame - lastFrame;
 		lastFrame = currentFrame;
 
@@ -909,17 +960,17 @@ int main(int argc, char* argv[]) {
 			float move_factor = 1.0f;
 			angle_alpha += (mouse_move_info.old_x - mouse_move_info.new_x) * deltaTime * move_factor;
 			if (angle_alpha < 0) {
-				angle_alpha += 2 * std::numbers::pi;
+				angle_alpha += 2 * std::numbers::pi_v<float>;
 			}
-			if (angle_alpha > 2 * std::numbers::pi) {
-				angle_alpha -= 2 * std::numbers::pi;
+			if (angle_alpha > 2 * std::numbers::pi_v<float>) {
+				angle_alpha -= 2 * std::numbers::pi_v<float>;
 			}
 			angle_beta += (mouse_move_info.old_y - mouse_move_info.new_y) * deltaTime * move_factor;
-			if (angle_beta <= -std::numbers::pi / 2) {
-				angle_beta = -std::numbers::pi / 2 + 0.00001f;
+			if (angle_beta <= -std::numbers::pi_v<float> / 2) {
+				angle_beta = -std::numbers::pi_v<float> / 2 + 0.00001f;
 			}
-			if (angle_beta >= std::numbers::pi / 2) {
-				angle_beta = std::numbers::pi / 2 - 0.00001f;
+			if (angle_beta >= std::numbers::pi_v<float> / 2) {
+				angle_beta = std::numbers::pi_v<float> / 2 - 0.00001f;
 			}
 			mouse_move_info.has_been_read = true;
 			glfwSetCursorPos(window, window_width / 2, window_height / 2);
@@ -928,8 +979,8 @@ int main(int argc, char* argv[]) {
 			if (!mouse_button_info[0].has_been_read && mouse_button_info[0].is_pressed) {
 				double xpos, ypos;
 				glfwGetCursorPos(window, &xpos, &ypos);
-				background_center.x = xpos;
-				background_center.y = window_height - ypos;
+				background_center.x = static_cast<float>(xpos);
+				background_center.y = window_height - static_cast<float>(ypos);
 				mouse_button_info[0].has_been_read = true;
 			}
 		}
@@ -941,12 +992,12 @@ int main(int argc, char* argv[]) {
 			bool within_toolbar_y = (y_fixed >= toolbar_info.y && y_fixed < toolbar_info.y + toolbar_info.h);
 
 			if (within_toolbar_x && within_toolbar_y) {
-				int pos_rel_x = xpos - toolbar_info.x;
-				int pos_rel_y = toolbar_info.y + toolbar_info.h - y_fixed;
+				int pos_rel_x = static_cast<int>(xpos) - toolbar_info.x;
+				int pos_rel_y = toolbar_info.y + toolbar_info.h - static_cast<int>(y_fixed);
 				if (pos_rel_y < toolbar_info.border_height) {
 					moving_toolbar = true;
-					toolbar_click_pos[0] = xpos - toolbar_info.x;
-					toolbar_click_pos[1] = y_fixed - toolbar_info.y;
+					toolbar_click_pos[0] = static_cast<int>(xpos) - toolbar_info.x;
+					toolbar_click_pos[1] = static_cast<int>(y_fixed) - toolbar_info.y;
 				}
 				for (auto& c : toolbar_controls) {
 					bool hit_x = (pos_rel_x >= c.x && pos_rel_x < c.x + c.w);
@@ -956,8 +1007,8 @@ int main(int argc, char* argv[]) {
 						case Toolbar_control_type::button:
 							// TODO: Act on this button
 							use_toolbar_alpha = !use_toolbar_alpha;
-							marching.use();
-							marching.setBool("use_toolbar_alpha", use_toolbar_alpha);
+							shader_use_program(id_program_voronoi);
+							shader_set_bool(id_program_voronoi, "use_toolbar_alpha", use_toolbar_alpha);
 							break;
 						case Toolbar_control_type::slider:
 							{
@@ -968,7 +1019,7 @@ int main(int argc, char* argv[]) {
 									float factor = (c.val_cur - c.val_min) / (float)(c.val_max - c.val_min);
 									int available_pixels = c.w - anchor_width;
 
-									anchor_min_x = c.x + factor * available_pixels;
+									anchor_min_x = c.x + static_cast<int>(factor * available_pixels);
 									anchor_max_x = anchor_min_x + anchor_width;
 								}
 								if (pos_rel_x >= anchor_min_x && pos_rel_x < anchor_max_x) {
@@ -979,7 +1030,7 @@ int main(int argc, char* argv[]) {
 							break;
 						case Toolbar_control_type::knob:
 							idx_active_control = c.id;
-							knob_down_start_x = xpos;
+							knob_down_start_x = static_cast<int>(xpos);
 							knob_down_start_val = c.val_cur;
 							// TODO: Make sure it is within the circle
 							break;
@@ -1002,8 +1053,8 @@ int main(int argc, char* argv[]) {
 			double xpos, ypos;
 			glfwGetCursorPos(window, &xpos, &ypos);
 			auto y_fixed = window_height - ypos;
-			voronoi_circles[idx_active_circle].pos[0] = xpos;
-			voronoi_circles[idx_active_circle].pos[1] = y_fixed;
+			voronoi_circles[idx_active_circle].pos[0] = static_cast<float>(xpos);
+			voronoi_circles[idx_active_circle].pos[1] = static_cast<float>(y_fixed);
 			block_ids[idx_active_circle] = {(int)xpos / block_size,(int)y_fixed / block_size };
 
 			ssbo_update(ssbo_circles, sizeof(Circle)* idx_active_circle, sizeof(Circle), &voronoi_circles[idx_active_circle]);
@@ -1013,8 +1064,8 @@ int main(int argc, char* argv[]) {
 			double xpos, ypos;
 			glfwGetCursorPos(window, &xpos, &ypos);
 			auto y_fixed = window_height - ypos;
-			toolbar_info.x = xpos - toolbar_click_pos[0];
-			toolbar_info.y = y_fixed - toolbar_click_pos[1];
+			toolbar_info.x = static_cast<int>(xpos) - toolbar_click_pos[0];
+			toolbar_info.y = static_cast<int>(y_fixed) - toolbar_click_pos[1];
 			ssbo_update(ssbo_toolbar_info, 0, sizeof(Toolbar_info), &toolbar_info);
 		}
 		if (shader == Shaders::marching && mouse_button_info[0].is_pressed && idx_active_control > -1) {
@@ -1024,20 +1075,20 @@ int main(int argc, char* argv[]) {
 			switch(c.type) {
 			case Toolbar_control_type::slider:
 				{
-					int xrel = xpos - toolbar_info.x - c.x;
+					int xrel = static_cast<int>(xpos) - toolbar_info.x - c.x;
 					float pos_factor = xrel / (float)c.w;
-					int new_val = c.val_min + pos_factor * (c.val_max - c.val_min);
+					int new_val = c.val_min + static_cast<int>(pos_factor * (c.val_max - c.val_min));
 					new_val = std::clamp(new_val, c.val_min, c.val_max);
 					c.val_cur = new_val;
 					toolbar_opacity = toolbar_opacity_min + (1 - toolbar_opacity_min) * ((float)(c.val_cur - c.val_min) / (c.val_max - c.val_min));
-					marching.use();
-					marching.setFloat("toolbar_opacity", toolbar_opacity);
+					shader_use_program(id_program_voronoi);
+					shader_set_float(id_program_voronoi, "toolbar_opacity", toolbar_opacity);
 				}
 				break;
 			case Toolbar_control_type::knob:
 				auto move_range = 200.0f;
 				auto pos_factor = (xpos - knob_down_start_x) / move_range;
-				int new_val = knob_down_start_val + pos_factor * (c.val_max - c.val_min);
+				int new_val = knob_down_start_val + static_cast<int>(pos_factor * (c.val_max - c.val_min));
 				new_val = std::clamp(new_val, c.val_min, c.val_max);
 				c.val_cur = new_val;
 				break;
@@ -1115,24 +1166,24 @@ int main(int argc, char* argv[]) {
 			}
 			break;
 		case Shaders::funky:
-			initial_shader.use();
-			initial_shader.setFloat("t", currentFrame);
-			initial_shader.setVec2("mouse_pos", glm::vec2(xpos, ypos));
-			initial_shader.setVec2("background_center", background_center);
+			shader_use_program(id_program_funky);
+			shader_set_float(id_program_funky, "t", currentFrame);
+			shader_set_vec2(id_program_funky, "mouse_pos", glm::vec2(xpos, ypos));
+			shader_set_vec2(id_program_funky, "background_center", background_center);
 			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 			break;
 		case Shaders::rays:
 			{
-				rays.use();
-				rays.setFloat("t", currentFrame);
-				rays.setVec2("mouse_pos", glm::vec2(xpos, ypos));
+				shader_use_program(id_program_rays);
+				shader_set_float(id_program_rays, "t", currentFrame);
+				shader_set_vec2(id_program_rays, "mouse_pos", glm::vec2(xpos, ypos));
 				the_focus.x = std::sin(angle_alpha) * std::cos(angle_beta);
 				the_focus.y = std::sin(angle_beta);
 				the_focus.z = std::cos(angle_alpha) * std::cos(angle_beta);
 				the_focus /= glm::length(the_focus);
-				rays.setVec3("the_focus", the_focus);
-				rays.setVec3("the_camera", the_camera);
+				shader_set_vec3(id_program_rays, "the_focus", the_focus);
+				shader_set_vec3(id_program_rays, "the_camera", the_camera);
 				glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 				Shared_data ss{};
@@ -1144,12 +1195,12 @@ int main(int argc, char* argv[]) {
 			}
 			break;
 		case Shaders::marching:
-			marching.use();
+			shader_use_program(id_program_voronoi);
 			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 			break;
 		case Shaders::solver:
-			solver.use();
+			shader_use_program(id_program_solver);
 			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 			int result_int;
@@ -1174,8 +1225,8 @@ int main(int argc, char* argv[]) {
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0); // unbind
 	glDeleteTextures(1, &id_texture);
 	glDeleteProgram(id_program_canvas);
-	glDeleteProgram(initial_shader.ID);
-	glDeleteProgram(rays.ID);
+	glDeleteProgram(id_program_funky);
+	glDeleteProgram(id_program_rays);
 
 	glfwTerminate();
 
@@ -1211,7 +1262,7 @@ void renderQuad()
 	glBindVertexArray(0);
 }
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height)
+void framebuffer_size_callback(GLFWwindow*, int width, int height)
 {
 	// make sure the viewport matches the new window dimensions; note that width and 
 	// height will be significantly larger than specified on retina displays.
