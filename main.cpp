@@ -425,6 +425,11 @@ GLuint setup_ssbo(GLuint ssbo_index, GLuint usage, int data_size, void* data) {
 	return idx_buffer;
 }
 
+void ssbo_update(GLuint idx_buffer, GLintptr offset, GLsizeiptr size, void* data) {
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, idx_buffer);
+	glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, size, data);
+}
+
 int main(int argc, char* argv[]) {
 	const unsigned int window_width = 1200;
 	const unsigned int window_height = 900;
@@ -726,8 +731,7 @@ int main(int argc, char* argv[]) {
 		}
 
 		if (do_push_to_device) {
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_toolbar_colors);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(float) * toolbar_pixels.size(), toolbar_pixels.data());
+			ssbo_update(ssbo_toolbar_colors, 0, sizeof(float)* toolbar_pixels.size(), toolbar_pixels.data());
 		}
 	};
 
@@ -986,10 +990,9 @@ int main(int argc, char* argv[]) {
 			voronoi_circles[idx_active_circle].pos[0] = xpos;
 			voronoi_circles[idx_active_circle].pos[1] = y_fixed;
 			block_ids[idx_active_circle] = {(int)xpos / block_size,(int)y_fixed / block_size };
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_circles);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * idx_active_circle, sizeof(Circle), &voronoi_circles[idx_active_circle]);
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_block_ids);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Block_id) * idx_active_circle, sizeof(Block_id), &block_ids[idx_active_circle]);
+
+			ssbo_update(ssbo_circles, sizeof(Circle)* idx_active_circle, sizeof(Circle), &voronoi_circles[idx_active_circle]);
+			ssbo_update(ssbo_block_ids, sizeof(Block_id)* idx_active_circle, sizeof(Block_id), &block_ids[idx_active_circle]);
 		}
 		if (shader == Shaders::marching && mouse_button_info[0].is_pressed && moving_toolbar) {
 			double xpos, ypos;
@@ -997,8 +1000,7 @@ int main(int argc, char* argv[]) {
 			auto y_fixed = window_height - ypos;
 			toolbar_info.x = xpos - toolbar_click_pos[0];
 			toolbar_info.y = y_fixed - toolbar_click_pos[1];
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_toolbar_info);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(Toolbar_info), &toolbar_info);
+			ssbo_update(ssbo_toolbar_info, 0, sizeof(Toolbar_info), &toolbar_info);
 		}
 		if (shader == Shaders::marching && mouse_button_info[0].is_pressed && idx_active_control > -1) {
 			double xpos, ypos;
@@ -1044,10 +1046,8 @@ int main(int argc, char* argv[]) {
 						// Don't move source circle when initializing the app
 						voronoi_circles[idx_src].pos[0] = voronoi_circles[idx_dest].pos[0];
 						voronoi_circles[idx_src].pos[1] = voronoi_circles[idx_dest].pos[1];
-						glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_circles);
-						glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * idx_src, sizeof(Circle), &voronoi_circles[idx_src]);
-						glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_block_ids);
-						glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Block_id) * idx_src, sizeof(Block_id), &block_ids[idx_dest]);
+						ssbo_update(ssbo_circles, sizeof(Circle)* idx_src, sizeof(Circle), &voronoi_circles[idx_src]);
+						ssbo_update(ssbo_block_ids, sizeof(Block_id)* idx_src, sizeof(Block_id), &block_ids[idx_dest]);
 						idx_src = idx_dest;
 					}
 					while ((idx_dest = std::rand() % voronoi_circles.size()) == idx_src);
@@ -1069,10 +1069,8 @@ int main(int argc, char* argv[]) {
 				voronoi_circles[idx_src].pos[0] = move_origin[0] + t * move_vector[0];
 				voronoi_circles[idx_src].pos[1] = move_origin[1] + t * move_vector[1];
 				block_ids[idx_src] = { (int)voronoi_circles[idx_src].pos[0] / block_size, (int)voronoi_circles[idx_src].pos[1] / block_size };
-				glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_circles);
-				glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Circle) * idx_src, sizeof(Circle), &voronoi_circles[idx_src]);
-				glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_block_ids);
-				glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(Block_id) * idx_src, sizeof(Block_id), &block_ids[idx_src]);
+				ssbo_update(ssbo_circles, sizeof(Circle)* idx_src, sizeof(Circle), &voronoi_circles[idx_src]);
+				ssbo_update(ssbo_block_ids, sizeof(Block_id)* idx_src, sizeof(Block_id), &block_ids[idx_src]);
 			}
 		}
 
