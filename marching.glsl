@@ -71,9 +71,10 @@ void main()
 
         float min_d = 1000000.0f;
         float max_d = 200 * 200;
+
         for (int i = 0; i < circles.length(); i++) {
             if (block_ids[i].x >= block_x_min && block_ids[i].x <= block_x_max && block_ids[i].y >= block_y_min && block_ids[i].y <= block_y_max) {
-                vec2 v = texel_coord.xy - vec2(circles[i].pos[0], circles[i].pos[1]);
+                vec2 v = texel_coord.xy - circles[i].pos;
                 float d = dot(v, v);
                 float outer_d = d - circles[i].r_square;
                 if (outer_d < 0.0f) {
@@ -83,7 +84,7 @@ void main()
                 }
                 if (outer_d > 0.0f && outer_d < min_d && outer_d < max_d) {
                     min_d = outer_d;
-                    vec3 the_color = vec3(circles[i].color[0], circles[i].color[1], circles[i].color[2]);
+                    vec3 the_color = circles[i].color;
                     pixel_color_scene = vec4(the_color, 1);
                 }
             }
