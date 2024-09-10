@@ -11,6 +11,11 @@ layout(std430, binding = 9) buffer layout_circles
     Circle circles[];
 };
 
+layout(std430, binding = 11) buffer layout_physics
+{
+    Physics physics[];
+};
+
 void main()
 {
     uint workgroup_size_x = gl_WorkGroupSize.x;
@@ -27,9 +32,9 @@ void main()
     uint num_circles = circles.length();
 
     if(idx_circle < num_circles) {
-        circles[idx_circle].pos.x += step_ms;
-        if (circles[idx_circle].pos.x + circles[idx_circle].r >= world_max_x) {
-            circles[idx_circle].pos.x -= (world_max_x - world_min_x - 2 * circles[idx_circle].r);
+        physics[idx_circle].pos.x += step_ms;
+        if (physics[idx_circle].pos.x + circles[idx_circle].r >= world_max_x) {
+            physics[idx_circle].pos.x -= (world_max_x - world_min_x - 2 * circles[idx_circle].r);
         }
     }
 }

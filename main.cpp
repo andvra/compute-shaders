@@ -50,10 +50,15 @@ struct Sphere {
 
 struct Circle {
 	// INFO read here regarding alignment: https://www.reddit.com/r/vulkan/comments/szfgu7/glsl_ssbo_memory_alignment_help/
-	alignas(8) float pos[2];
+	//alignas(8) float pos[2];
 	float r;
 	float r_square;	// For faster GPU calculations
 	alignas(16) float color[3];
+};
+
+struct Physics {
+	alignas(8) float pos[2];
+	alignas(8) float dir[2];
 };
 
 struct Mold_particle {
@@ -451,6 +456,8 @@ enum class Ssbo_index {
 	mold = 7,
 	mold_intensities = 8,
 	physics_circles = 9,
+	voronoi_physics = 10,
+	physics_physics = 11
 };
 
 // usage an be eg. GL_DYNAMIC_DRAW or GL_DYNAMIC_READ, see documentation
@@ -598,8 +605,10 @@ int main(int, char* []) {
 	shader_set_int(id_program_rays, "w", window_width);
 	shader_set_int(id_program_rays, "h", window_height);
 
-	std::vector<Circle> voronoi_circles(200);
-	std::vector<Block_id> block_ids(voronoi_circles.size());
+	auto num_voronoi_circles = 200;
+	std::vector<Circle> voronoi_circles(num_voronoi_circles);
+	std::vector<Physics> voronoi_physics(num_voronoi_circles);
+	std::vector<Block_id> block_ids(num_voronoi_circles);
 	Toolbar_info toolbar_info;
 	toolbar_info = { .x = 100, .y = 300, .w = 300, .h = 500, .border_height = 50 };
 	// This is to flip the coordinate system so it works with GLSL
@@ -612,7 +621,8 @@ int main(int, char* []) {
 		{(int)Toolbar_control_ids::knob_value, Toolbar_control_type::knob, 20, 190, 50, 50, 1, 100, 1}
 	};
 	int block_size = 200;
-	GLuint ssbo_circles;
+	GLuint ssbo_voronoi_circles;
+	GLuint ssbo_voronoi_physics;
 	GLuint ssbo_block_ids;
 	GLuint ssbo_toolbar_info;
 	GLuint ssbo_toolbar_colors;
@@ -800,7 +810,7 @@ int main(int, char* []) {
 	};
 
 	{
-		for (int i = 0; i < voronoi_circles.size(); i++) {
+		for (int i = 0; i < num_voronoi_circles; i++) {
 			float pos[2];
 			float radius;
 			float radius_square;
@@ -818,15 +828,18 @@ int main(int, char* []) {
 			c.color[0] = color[0];
 			c.color[1] = color[1];
 			c.color[2] = color[2];
-			c.pos[0] = pos[0];
-			c.pos[1] = pos[1];
+			Physics physics = {};
+			physics.pos[0] = pos[0];
+			physics.pos[1] = pos[1];
 			voronoi_circles[i] = c;
+			voronoi_physics[i] = physics;
 		}
 
-		ssbo_circles = setup_ssbo(static_cast<GLuint>(Ssbo_index::voronoi_circles), GL_DYNAMIC_DRAW, sizeof(Circle) * voronoi_circles.size(), voronoi_circles.data());
+		ssbo_voronoi_circles = setup_ssbo(static_cast<GLuint>(Ssbo_index::voronoi_circles), GL_DYNAMIC_DRAW, sizeof(Circle) * voronoi_circles.size(), voronoi_circles.data());
+		ssbo_voronoi_physics = setup_ssbo(static_cast<GLuint>(Ssbo_index::voronoi_physics), GL_DYNAMIC_DRAW, sizeof(Physics) * voronoi_physics.size(), voronoi_physics.data());
 
 		for (int i = 0; i < block_ids.size(); i++) {
-			block_ids[i] = { (int)voronoi_circles[i].pos[0] / block_size, (int)voronoi_circles[i].pos[1] / block_size };
+			block_ids[i] = { (int)voronoi_physics[i].pos[0] / block_size, (int)voronoi_physics[i].pos[1] / block_size };
 		}
 
 		ssbo_block_ids = setup_ssbo(static_cast<GLuint>(Ssbo_index::voronoi_blocks), GL_DYNAMIC_DRAW, sizeof(Block_id) * block_ids.size(), block_ids.data());
@@ -874,24 +887,30 @@ int main(int, char* []) {
 	shader_use_program(id_program_mold);
 	shader_set_int(id_program_mold, "num_types", num_types);
 
-	std::vector<Circle> circles_physics(2);
+	auto num_circles_physics = 2;
+	std::vector<Circle> circles_physics(num_circles_physics);
+	std::vector<Physics> physics_physics(num_circles_physics);
 	circles_physics[0].color[0] = 1;
 	circles_physics[0].color[1] = 1;
 	circles_physics[0].color[2] = 1;
-	circles_physics[0].pos[0] = 10;
-	circles_physics[0].pos[1] = 20;
+	physics_physics[0].pos[0] = 10;
+	physics_physics[0].pos[1] = 20;
 	circles_physics[0].r = 5;
 	circles_physics[0].r_square = circles_physics[0].r * circles_physics[0].r;
 	circles_physics[1] = circles_physics[0];
+	physics_physics[1] = physics_physics[0];
 	circles_physics[1].color[1] = 0;
-	circles_physics[1].pos[1] = 50;
+	physics_physics[1].pos[1] = 50;
 
 	float world_min_x = 0.0f;
 	float world_max_x = 100.0f;
 	float world_min_y = 0.0f;
 	float world_max_y = 100.0f * window_height / window_width;
 	float step_ms = 0.01;
+
 	setup_ssbo(static_cast<GLuint>(Ssbo_index::physics_circles), GL_DYNAMIC_DRAW, sizeof(Circle)* circles_physics.size(), circles_physics.data());
+	setup_ssbo(static_cast<GLuint>(Ssbo_index::physics_physics), GL_DYNAMIC_DRAW, sizeof(Physics) * physics_physics.size(), physics_physics.data());
+
 	shader_use_program(id_program_physics_compute);
 	shader_set_float(id_program_physics_compute, "world_min_x", world_min_x);
 	shader_set_float(id_program_physics_compute, "world_max_x", world_max_x);
@@ -1095,7 +1114,7 @@ int main(int, char* []) {
 			}
 			else {
 				for (int i = 0; i < voronoi_circles.size(); i++) {
-					auto d_square = (xpos - voronoi_circles[i].pos[0]) * (xpos - voronoi_circles[i].pos[0]) + (y_fixed - voronoi_circles[i].pos[1]) * (y_fixed - voronoi_circles[i].pos[1]);
+					auto d_square = (xpos - voronoi_physics[i].pos[0]) * (xpos - voronoi_physics[i].pos[0]) + (y_fixed - voronoi_physics[i].pos[1]) * (y_fixed - voronoi_physics[i].pos[1]);
 					auto r_square = voronoi_circles[i].r * voronoi_circles[i].r;
 					if (d_square < r_square) {
 						idx_active_circle = i;
@@ -1108,11 +1127,12 @@ int main(int, char* []) {
 			double xpos, ypos;
 			glfwGetCursorPos(window, &xpos, &ypos);
 			auto y_fixed = window_height - ypos;
-			voronoi_circles[idx_active_circle].pos[0] = static_cast<float>(xpos);
-			voronoi_circles[idx_active_circle].pos[1] = static_cast<float>(y_fixed);
+			voronoi_physics[idx_active_circle].pos[0] = static_cast<float>(xpos);
+			voronoi_physics[idx_active_circle].pos[1] = static_cast<float>(y_fixed);
 			block_ids[idx_active_circle] = {(int)xpos / block_size,(int)y_fixed / block_size };
 
-			ssbo_update(ssbo_circles, sizeof(Circle)* idx_active_circle, sizeof(Circle), &voronoi_circles[idx_active_circle]);
+			//ssbo_update(ssbo_voronoi_circles, sizeof(Circle)* idx_active_circle, sizeof(Circle), &voronoi_circles[idx_active_circle]);
+			ssbo_update(ssbo_voronoi_physics, sizeof(Physics)* idx_active_circle, sizeof(Physics), &voronoi_physics[idx_active_circle]);
 			ssbo_update(ssbo_block_ids, sizeof(Block_id)* idx_active_circle, sizeof(Block_id), &block_ids[idx_active_circle]);
 		}
 		if (shader == Shaders::marching && mouse_button_info[0].is_pressed && moving_toolbar) {
@@ -1165,32 +1185,34 @@ int main(int, char* []) {
 				if (currentFrame > t_move_end) {
 					if (idx_dest != -1) {
 						// Don't move source circle when initializing the app
-						voronoi_circles[idx_src].pos[0] = voronoi_circles[idx_dest].pos[0];
-						voronoi_circles[idx_src].pos[1] = voronoi_circles[idx_dest].pos[1];
-						ssbo_update(ssbo_circles, sizeof(Circle)* idx_src, sizeof(Circle), &voronoi_circles[idx_src]);
+						voronoi_physics[idx_src].pos[0] = voronoi_physics[idx_dest].pos[0];
+						voronoi_physics[idx_src].pos[1] = voronoi_physics[idx_dest].pos[1];
+						//ssbo_update(ssbo_circles, sizeof(Circle)* idx_src, sizeof(Circle), &voronoi_circles[idx_src]);
+						ssbo_update(ssbo_voronoi_physics, sizeof(Physics)* idx_src, sizeof(Physics), &voronoi_physics[idx_src]);
 						ssbo_update(ssbo_block_ids, sizeof(Block_id)* idx_src, sizeof(Block_id), &block_ids[idx_dest]);
 						idx_src = idx_dest;
 					}
 					while ((idx_dest = std::rand() % voronoi_circles.size()) == idx_src);
-					auto x1 = voronoi_circles[idx_dest].pos[0];
-					auto y1 = voronoi_circles[idx_dest].pos[1];
-					auto x2 = voronoi_circles[idx_src].pos[0];
-					auto y2 = voronoi_circles[idx_src].pos[1];
+					auto x1 = voronoi_physics[idx_dest].pos[0];
+					auto y1 = voronoi_physics[idx_dest].pos[1];
+					auto x2 = voronoi_physics[idx_src].pos[0];
+					auto y2 = voronoi_physics[idx_src].pos[1];
 					float d = std::sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
 					t_move_end = currentFrame + d * 0.005f;
 					t_move_start = currentFrame;
-					auto diff_x = voronoi_circles[idx_dest].pos[0] - voronoi_circles[idx_src].pos[0];
-					auto diff_y = voronoi_circles[idx_dest].pos[1] - voronoi_circles[idx_src].pos[1];
-					move_origin[0] = voronoi_circles[idx_src].pos[0];
-					move_origin[1] = voronoi_circles[idx_src].pos[1];
+					auto diff_x = voronoi_physics[idx_dest].pos[0] - voronoi_physics[idx_src].pos[0];
+					auto diff_y = voronoi_physics[idx_dest].pos[1] - voronoi_physics[idx_src].pos[1];
+					move_origin[0] = voronoi_physics[idx_src].pos[0];
+					move_origin[1] = voronoi_physics[idx_src].pos[1];
 					move_vector[0] = diff_x;
 					move_vector[1] = diff_y;
 				}
 				auto t = (currentFrame - t_move_start) / (t_move_end - t_move_start);
-				voronoi_circles[idx_src].pos[0] = move_origin[0] + t * move_vector[0];
-				voronoi_circles[idx_src].pos[1] = move_origin[1] + t * move_vector[1];
-				block_ids[idx_src] = { (int)voronoi_circles[idx_src].pos[0] / block_size, (int)voronoi_circles[idx_src].pos[1] / block_size };
-				ssbo_update(ssbo_circles, sizeof(Circle)* idx_src, sizeof(Circle), &voronoi_circles[idx_src]);
+				voronoi_physics[idx_src].pos[0] = move_origin[0] + t * move_vector[0];
+				voronoi_physics[idx_src].pos[1] = move_origin[1] + t * move_vector[1];
+				block_ids[idx_src] = { (int)voronoi_physics[idx_src].pos[0] / block_size, (int)voronoi_physics[idx_src].pos[1] / block_size };
+				//ssbo_update(ssbo_circles, sizeof(Circle)* idx_src, sizeof(Circle), &voronoi_circles[idx_src]);
+				ssbo_update(ssbo_voronoi_physics, sizeof(Physics) * idx_src, sizeof(Physics), &voronoi_physics[idx_src]);
 				ssbo_update(ssbo_block_ids, sizeof(Block_id)* idx_src, sizeof(Block_id), &block_ids[idx_src]);
 			}
 		}

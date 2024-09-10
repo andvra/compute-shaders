@@ -16,6 +16,11 @@ layout(std430, binding = 9) buffer layout_circles
     Circle circles[];
 };
 
+layout(std430, binding = 11) buffer layout_physics
+{
+    Physics physics[];
+};
+
 void main()
 {
     ivec2 texel_coord = ivec2(gl_GlobalInvocationID.xy);
@@ -43,7 +48,7 @@ void main()
     }
 
     for (int idx_circle = 0; idx_circle < num_circles; idx_circle++) {
-        vec2 pos_window = world_pos_start + world_scale * circles[idx_circle].pos;
+        vec2 pos_window = world_pos_start + world_scale * physics[idx_circle].pos;
         vec3 color = circles[idx_circle].color;
         float r_window = world_scale.x * circles[idx_circle].r;
         // Distance measurements need to take into consideration that the two axes might

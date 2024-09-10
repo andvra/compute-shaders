@@ -23,14 +23,22 @@ layout(std430, binding = 3) buffer layout_circles
 {
     Circle circles[];
 };
+
+layout(std430, binding = 10) buffer layout_physics
+{
+    Physics physics[];
+};
+
 layout(std430, binding = 4) buffer layout_blocks
 {
     Block_id block_ids[];
 };
+
 layout(std430, binding = 5) buffer layout_toolbar_info
 {
     Toolbar_info toolbar_info;
 };
+
 layout(std430, binding = 6) buffer layout_toolbar_pixels
 {
     float toolbar_colors[];
@@ -61,6 +69,7 @@ void main()
         float bb = toolbar_colors[idx_b];
         pixel_color_toolbar = vec4(rr, gg, bb, 1);
     }
+
     if(use_toolbar_alpha || !within_toolbar) {
         int this_block_id_x = texel_coord.x / block_size;
         int this_block_id_y = texel_coord.y / block_size;
@@ -74,7 +83,7 @@ void main()
 
         for (int i = 0; i < circles.length(); i++) {
             if (block_ids[i].x >= block_x_min && block_ids[i].x <= block_x_max && block_ids[i].y >= block_y_min && block_ids[i].y <= block_y_max) {
-                vec2 v = texel_coord.xy - circles[i].pos;
+                vec2 v = texel_coord.xy - physics[i].pos;
                 float d = dot(v, v);
                 float outer_d = d - circles[i].r_square;
                 if (outer_d < 0.0f) {
