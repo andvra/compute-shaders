@@ -1,12 +1,3 @@
-#version 430 core
-
-struct Circle {
-    float pos[2];
-    float r;
-    float r_square;
-    float color[3];
-};
-
 struct Block_id {
     int x;
     int y;

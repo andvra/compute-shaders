@@ -49,10 +49,11 @@ struct Sphere {
 };
 
 struct Circle {
-	float pos[2];
+	// INFO read here regarding alignment: https://www.reddit.com/r/vulkan/comments/szfgu7/glsl_ssbo_memory_alignment_help/
+	alignas(8) float pos[2];
 	float r;
 	float r_square;	// For faster GPU calculations
-	float color[3];
+	alignas(16) float color[3];
 };
 
 struct Mold_particle {
@@ -325,7 +326,10 @@ bool compile_shader(GLuint& id_shader, const std::string& shader_code, Shader_ty
 	id_shader = glCreateShader(shader_type_data.type);
 	auto the_code = shader_code.c_str();
 
-	glShaderSource(id_shader, 1, &the_code, nullptr);
+	std::string version_string = "#version 430 core\n";
+
+	const char* src[2] = { version_string.c_str(), the_code};
+	glShaderSource(id_shader, 2, src, nullptr);
 	glCompileShader(id_shader);
 
 	std::string log_message = {};
@@ -364,6 +368,7 @@ bool compile_program(std::vector<GLuint> ids_shaders, GLuint& id_program) {
 
 struct Shader_info {
 	std::filesystem::path path;
+	std::vector<std::filesystem::path> paths_shared;
 	Shader_type type;
 };
 
@@ -381,9 +386,16 @@ bool shader_create(std::vector<Shader_info> shader_info, GLuint& id_program) {
 		std::string code_shader = { };
 		auto& cur_shader_info = shader_info[idx_shader];
 		
-		if (!file_read(cur_shader_info.path, code_shader)) {
-			log_error(std::format("Could not read file '{}'", cur_shader_info.path.string()));
-			return false;
+		std::vector<std::filesystem::path> paths_all(cur_shader_info.paths_shared.begin(), cur_shader_info.paths_shared.end());
+		paths_all.push_back(cur_shader_info.path);
+
+		for (auto& cur_path : paths_all) {
+			std::string cur_code = {};
+			if (!file_read(cur_path, cur_code)) {
+				log_error(std::format("Could not read file '{}'", cur_shader_info.path.string()));
+				return false;
+			}
+			code_shader += "\n" + cur_code;
 		}
 
 		auto success_compile = compile_shader(ids[idx_shader], code_shader, cur_shader_info.type);
@@ -437,7 +449,8 @@ enum class Ssbo_index {
 	voronoi_toolbar = 5,
 	voronoi_toolbar_colors = 6,
 	mold = 7,
-	mold_intensities = 8
+	mold_intensities = 8,
+	physics_circles = 9,
 };
 
 // usage an be eg. GL_DYNAMIC_DRAW or GL_DYNAMIC_READ, see documentation
@@ -485,13 +498,14 @@ int main(int, char* []) {
 	std::filesystem::path rays_path("rays.glsl");
 	std::filesystem::path marching_path("marching.glsl");
 	std::filesystem::path mold_path("mold.glsl");
-	std::filesystem::path physics_path("physics.glsl");
-
+	std::filesystem::path path_physics_compute("physics_compute.glsl");
+	std::filesystem::path path_physics_render("physics_render.glsl");
+	std::filesystem::path path_shared_shapes("shared_shapes.glsl");
 	GLuint id_program_canvas;
 
 	std::vector<Shader_info> shader_info_base = {
-		{ vertex_shader_path, Shader_type::vertex},
-		{ fragment_shader_path, Shader_type::fragment}
+		{ vertex_shader_path, {}, Shader_type::vertex},
+		{ fragment_shader_path, {}, Shader_type::fragment}
 	};
 
 	if (!shader_create(shader_info_base, id_program_canvas)) {
@@ -499,7 +513,8 @@ int main(int, char* []) {
 		return -1;
 	}
 
-	GLuint id_program_physics;
+	GLuint id_program_physics_compute;
+	GLuint id_program_physics_render;
 	GLuint id_program_mold;
 	GLuint id_program_rays;
 	GLuint id_program_voronoi;
@@ -510,21 +525,24 @@ int main(int, char* []) {
 		std::string display_name;
 		GLuint& id_program;
 		std::filesystem::path path;
+		std::vector<std::filesystem::path> paths_shared;
 	};
 
 	std::vector<Compute_shader_info> compute_shader_info = {
-		{"physics",	id_program_physics,	physics_path},
-		{"mold",	id_program_mold,	mold_path},
-		{"rays",	id_program_rays,	rays_path},
-		{"voronoi",	id_program_voronoi,	marching_path},
-		{"solver",	id_program_solver,	solver_path},
-		{"funky",	id_program_funky,	initial_shader_path},
+		{"physics_compute",	id_program_physics_compute,	path_physics_compute,	{path_shared_shapes}},
+		{"physics_render",	id_program_physics_render,	path_physics_render,	{path_shared_shapes}},
+		{"mold",			id_program_mold,			mold_path},
+		{"rays",			id_program_rays,			rays_path},
+		{"voronoi",			id_program_voronoi,			marching_path,			{path_shared_shapes}},
+		{"solver",			id_program_solver,			solver_path},
+		{"funky",			id_program_funky,			initial_shader_path},
 	};
-	
+
 	for (auto& x : compute_shader_info) {
 		Shader_info shader_info = {};
 		shader_info.path = x.path;
 		shader_info.type = Shader_type::compute;
+		shader_info.paths_shared = x.paths_shared;
 		if (!shader_create({ shader_info }, x.id_program)) {
 			log_error(std::format("Could not create program '{}'", x.display_name));
 			return -1;
@@ -856,6 +874,41 @@ int main(int, char* []) {
 	shader_use_program(id_program_mold);
 	shader_set_int(id_program_mold, "num_types", num_types);
 
+	std::vector<Circle> circles_physics(2);
+	circles_physics[0].color[0] = 1;
+	circles_physics[0].color[1] = 1;
+	circles_physics[0].color[2] = 1;
+	circles_physics[0].pos[0] = 10;
+	circles_physics[0].pos[1] = 20;
+	circles_physics[0].r = 5;
+	circles_physics[0].r_square = circles_physics[0].r * circles_physics[0].r;
+	circles_physics[1] = circles_physics[0];
+	circles_physics[1].color[1] = 0;
+	circles_physics[1].pos[1] = 50;
+
+	float world_min_x = 0.0f;
+	float world_max_x = 100.0f;
+	float world_min_y = 0.0f;
+	float world_max_y = 100.0f * window_height / window_width;;
+	setup_ssbo(static_cast<GLuint>(Ssbo_index::physics_circles), GL_DYNAMIC_DRAW, sizeof(Circle)* circles_physics.size(), circles_physics.data());
+	shader_use_program(id_program_physics_compute);
+	shader_set_float(id_program_physics_compute, "world_min_x", world_min_x);
+	shader_set_float(id_program_physics_compute, "world_max_x", world_max_x);
+	shader_set_float(id_program_physics_compute, "world_min_u", world_min_y);
+	shader_set_float(id_program_physics_compute, "world_max_y", world_max_y);
+
+	shader_use_program(id_program_physics_render);
+	shader_set_float(id_program_physics_render, "world_min_x", world_min_x);
+	shader_set_float(id_program_physics_render, "world_max_x", world_max_x);
+	shader_set_float(id_program_physics_render, "world_min_u", world_min_y);
+	shader_set_float(id_program_physics_render, "world_max_y", world_max_y);
+	shader_set_float(id_program_physics_render, "window_width", window_width);
+	shader_set_float(id_program_physics_render, "window_height", window_height);
+	shader_set_float(id_program_physics_render, "window_world_start_x", 0.0f);
+	shader_set_float(id_program_physics_render, "window_world_start_y", 0.0f);
+	shader_set_float(id_program_physics_render, "window_world_scale_x", window_width / (world_max_x - world_min_x));
+	shader_set_float(id_program_physics_render, "window_world_scale_y", window_height / (world_max_y - world_min_y));
+
 	glfwSetMouseButtonCallback(window, mouse_button_callback);
 	glfwSetKeyCallback(window, key_callback);
 	glfwSetCursorPosCallback(window, mouse_move_callback);
@@ -1146,7 +1199,11 @@ int main(int, char* []) {
 		switch (shader) {
 		case Shaders::physics:
 		{
-			shader_use_program(id_program_physics);
+			shader_use_program(id_program_physics_compute);
+			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+			shader_use_program(id_program_physics_render);
 			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 		}

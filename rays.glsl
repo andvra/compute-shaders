@@ -1,5 +1,3 @@
-# version 430 core
-
 struct Sphere {
 	float position[3];
 	float r;
