@@ -4,6 +4,7 @@ layout(location = 0) uniform float world_min_x;
 layout(location = 1) uniform float world_max_x;
 layout(location = 2) uniform float world_min_y;
 layout(location = 3) uniform float world_max_y;
+layout(location = 4) uniform float step_ms;
 
 layout(std430, binding = 9) buffer layout_circles
 {
@@ -26,9 +27,9 @@ void main()
     uint num_circles = circles.length();
 
     if(idx_circle < num_circles) {
-        circles[idx_circle].pos.x += 0.003f;
+        circles[idx_circle].pos.x += step_ms;
         if (circles[idx_circle].pos.x + circles[idx_circle].r >= world_max_x) {
-            circles[idx_circle].pos.x -= (world_max_x - world_min_x - 2*circles[idx_circle].r);
+            circles[idx_circle].pos.x -= (world_max_x - world_min_x - 2 * circles[idx_circle].r);
         }
     }
 }

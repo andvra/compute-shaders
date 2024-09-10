@@ -889,13 +889,15 @@ int main(int, char* []) {
 	float world_min_x = 0.0f;
 	float world_max_x = 100.0f;
 	float world_min_y = 0.0f;
-	float world_max_y = 100.0f * window_height / window_width;;
+	float world_max_y = 100.0f * window_height / window_width;
+	float step_ms = 0.01;
 	setup_ssbo(static_cast<GLuint>(Ssbo_index::physics_circles), GL_DYNAMIC_DRAW, sizeof(Circle)* circles_physics.size(), circles_physics.data());
 	shader_use_program(id_program_physics_compute);
 	shader_set_float(id_program_physics_compute, "world_min_x", world_min_x);
 	shader_set_float(id_program_physics_compute, "world_max_x", world_max_x);
 	shader_set_float(id_program_physics_compute, "world_min_u", world_min_y);
 	shader_set_float(id_program_physics_compute, "world_max_y", world_max_y);
+	shader_set_float(id_program_physics_compute, "step_ms", 0.01f);
 
 	shader_use_program(id_program_physics_render);
 	shader_set_float(id_program_physics_render, "world_min_x", world_min_x);
