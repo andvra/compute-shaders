@@ -34,9 +34,10 @@ void main()
     if (idx_circle < num_circles) {
         float r = circles[idx_circle].r;
         vec2 cur_pos = physics[idx_circle].pos;
-        vec2 cur_dir = physics[idx_circle].dir;
+        vec2 cur_dir = normalize(physics[idx_circle].dir);
         vec2 move = step_ms * cur_dir;
         vec2 next_pos = cur_pos + move;
+
         if ((next_pos.x > world_max_x) || abs(next_pos.x - world_max_x) < r) {
             float t_collision = (world_max_x - cur_pos.x - r) / move.x;
             physics[idx_circle].pos.x = world_max_x - r - (1 - t_collision) * cur_dir.x;
@@ -48,7 +49,37 @@ void main()
             physics[idx_circle].dir.x = -physics[idx_circle].dir.x;
         }
         else {
-            physics[idx_circle].pos = next_pos;
+            physics[idx_circle].pos.x = next_pos.x;
+        }
+
+        if ((next_pos.y > world_max_y) || abs(next_pos.y - world_max_y) < r) {
+            float t_collision = (world_max_y - cur_pos.y - r) / move.y;
+            physics[idx_circle].pos.y = world_max_y - r - (1 - t_collision) * cur_dir.y;
+            physics[idx_circle].dir.y = -physics[idx_circle].dir.y;
+        }
+        else if ((next_pos.y < world_min_y) || abs(next_pos.y - world_min_y) < r) {
+            float t_collision = (cur_pos.y - r - world_min_y) / move.y;
+            physics[idx_circle].pos.y = world_min_y + r - (1 - t_collision) * cur_dir.y;
+            physics[idx_circle].dir.y = -physics[idx_circle].dir.y;
+        }
+        else {
+            physics[idx_circle].pos.y = next_pos.y;
+        }
+
+        // Only comparing to circles with higher indices is a way to avoid
+        //  doing collision detection both ways (circle A --> circle B and circle B --> circle A)
+        for (uint idx_other = idx_circle + 1; idx_other < num_circles; idx_other++) {
+            vec2 pos_me = physics[idx_circle].pos;
+            vec2 pos_other = physics[idx_other].pos;
+            float r_me = circles[idx_circle].r;
+            float r_other = circles[idx_other].r;
+            float d = distance(pos_me, pos_other);
+
+            bool does_collide = d < r_me + r_other;
+
+            if (does_collide) {
+                physics[idx_other].pos = vec2(10, 10);
+            }
         }
     }
 }

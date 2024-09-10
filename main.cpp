@@ -896,12 +896,14 @@ int main(int, char* []) {
 	physics_physics[0].pos[0] = 10;
 	physics_physics[0].pos[1] = 20;
 	physics_physics[0].dir[0] = 1;
+	physics_physics[0].dir[1] = 1;
 	circles_physics[0].r = 5;
 	circles_physics[0].r_square = circles_physics[0].r * circles_physics[0].r;
 	circles_physics[1] = circles_physics[0];
 	physics_physics[1] = physics_physics[0];
 	circles_physics[1].color[1] = 0;
 	physics_physics[1].pos[1] = 50;
+	physics_physics[1].dir[0] = 0.7;
 
 	float world_min_x = 0.0f;
 	float world_max_x = 100.0f;
