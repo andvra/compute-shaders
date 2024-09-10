@@ -895,6 +895,7 @@ int main(int, char* []) {
 	circles_physics[0].color[2] = 1;
 	physics_physics[0].pos[0] = 10;
 	physics_physics[0].pos[1] = 20;
+	physics_physics[0].dir[0] = 1;
 	circles_physics[0].r = 5;
 	circles_physics[0].r_square = circles_physics[0].r * circles_physics[0].r;
 	circles_physics[1] = circles_physics[0];

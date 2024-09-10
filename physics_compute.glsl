@@ -31,10 +31,24 @@ void main()
 
     uint num_circles = circles.length();
 
-    if(idx_circle < num_circles) {
-        physics[idx_circle].pos.x += step_ms;
-        if (physics[idx_circle].pos.x + circles[idx_circle].r >= world_max_x) {
-            physics[idx_circle].pos.x -= (world_max_x - world_min_x - 2 * circles[idx_circle].r);
+    if (idx_circle < num_circles) {
+        float r = circles[idx_circle].r;
+        vec2 cur_pos = physics[idx_circle].pos;
+        vec2 cur_dir = physics[idx_circle].dir;
+        vec2 move = step_ms * cur_dir;
+        vec2 next_pos = cur_pos + move;
+        if ((next_pos.x > world_max_x) || abs(next_pos.x - world_max_x) < r) {
+            float t_collision = (world_max_x - cur_pos.x - r) / move.x;
+            physics[idx_circle].pos.x = world_max_x - r - (1 - t_collision) * cur_dir.x;
+            physics[idx_circle].dir.x = -physics[idx_circle].dir.x;
+        }
+        else if ((next_pos.x < world_min_x) || abs(next_pos.x - world_min_x) < r) {
+            float t_collision = (cur_pos.x - r - world_min_x) / move.x;
+            physics[idx_circle].pos.x = world_min_x + r - (1 - t_collision) * cur_dir.x;
+            physics[idx_circle].dir.x = -physics[idx_circle].dir.x;
+        }
+        else {
+            physics[idx_circle].pos = next_pos;
         }
     }
 }
