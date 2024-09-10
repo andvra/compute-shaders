@@ -19,7 +19,7 @@ float deltaTime = 0.0f; // time between current frame and last frame
 float lastFrame = 0.0f; // time of last frame
 
 auto background_center = glm::vec2(500, 500);
-enum class Shaders { funky, rays, marching, solver, mold, physics };
+enum class Shaders { funky, rays, voronoi, solver, mold, physics };
 enum class Toolbar_control_type { button, slider, knob };
 
 Shaders shader = Shaders::mold;
@@ -503,7 +503,7 @@ int main(int, char* []) {
 	std::filesystem::path initial_shader_path("computeShader.glsl");
 	std::filesystem::path solver_path("solver.glsl");
 	std::filesystem::path rays_path("rays.glsl");
-	std::filesystem::path marching_path("marching.glsl");
+	std::filesystem::path path_voronoi("voronoi.glsl");
 	std::filesystem::path mold_path("mold.glsl");
 	std::filesystem::path path_physics_compute("physics_compute.glsl");
 	std::filesystem::path path_physics_render("physics_render.glsl");
@@ -540,7 +540,7 @@ int main(int, char* []) {
 		{"physics_render",	id_program_physics_render,	path_physics_render,	{path_shared_shapes}},
 		{"mold",			id_program_mold,			mold_path},
 		{"rays",			id_program_rays,			rays_path},
-		{"voronoi",			id_program_voronoi,			marching_path,			{path_shared_shapes}},
+		{"voronoi",			id_program_voronoi,			path_voronoi,			{path_shared_shapes}},
 		{"solver",			id_program_solver,			solver_path},
 		{"funky",			id_program_funky,			initial_shader_path},
 	};
@@ -1004,7 +1004,7 @@ int main(int, char* []) {
 			shader = Shaders::rays;
 		}
 		if (key_was_just_pressed(GLFW_KEY_3)) {
-			shader = Shaders::marching;
+			shader = Shaders::voronoi;
 		}
 		if (key_was_just_pressed(GLFW_KEY_4)) {
 			shader = Shaders::mold;
@@ -1058,7 +1058,7 @@ int main(int, char* []) {
 				mouse_button_info[0].has_been_read = true;
 			}
 		}
-		if (shader == Shaders::marching && !mouse_button_info[0].has_been_read && mouse_button_info[0].is_pressed) {
+		if (shader == Shaders::voronoi && !mouse_button_info[0].has_been_read && mouse_button_info[0].is_pressed) {
 			double xpos, ypos;
 			glfwGetCursorPos(window, &xpos, &ypos);
 			auto y_fixed = window_height - ypos;
@@ -1123,7 +1123,7 @@ int main(int, char* []) {
 			}
 			mouse_button_info[0].has_been_read = true;
 		}
-		if (shader == Shaders::marching && mouse_button_info[0].is_pressed && idx_active_circle > -1) {
+		if (shader == Shaders::voronoi && mouse_button_info[0].is_pressed && idx_active_circle > -1) {
 			double xpos, ypos;
 			glfwGetCursorPos(window, &xpos, &ypos);
 			auto y_fixed = window_height - ypos;
@@ -1135,7 +1135,7 @@ int main(int, char* []) {
 			ssbo_update(ssbo_voronoi_physics, sizeof(Physics)* idx_active_circle, sizeof(Physics), &voronoi_physics[idx_active_circle]);
 			ssbo_update(ssbo_block_ids, sizeof(Block_id)* idx_active_circle, sizeof(Block_id), &block_ids[idx_active_circle]);
 		}
-		if (shader == Shaders::marching && mouse_button_info[0].is_pressed && moving_toolbar) {
+		if (shader == Shaders::voronoi && mouse_button_info[0].is_pressed && moving_toolbar) {
 			double xpos, ypos;
 			glfwGetCursorPos(window, &xpos, &ypos);
 			auto y_fixed = window_height - ypos;
@@ -1143,7 +1143,7 @@ int main(int, char* []) {
 			toolbar_info.y = static_cast<int>(y_fixed) - toolbar_click_pos[1];
 			ssbo_update(ssbo_toolbar_info, 0, sizeof(Toolbar_info), &toolbar_info);
 		}
-		if (shader == Shaders::marching && mouse_button_info[0].is_pressed && idx_active_control > -1) {
+		if (shader == Shaders::voronoi && mouse_button_info[0].is_pressed && idx_active_control > -1) {
 			double xpos, ypos;
 			glfwGetCursorPos(window, &xpos, &ypos);
 			auto& c = toolbar_controls[idx_active_control];
@@ -1170,12 +1170,12 @@ int main(int, char* []) {
 			}
 			draw_control(c, true);
 		}
-		if (shader == Shaders::marching && !mouse_button_info[0].is_pressed) {
+		if (shader == Shaders::voronoi && !mouse_button_info[0].is_pressed) {
 			idx_active_circle = -1;
 			moving_toolbar = false;
 			idx_active_control = -1;
 		}
-		if (shader == Shaders::marching) {
+		if (shader == Shaders::voronoi) {
 			if (voronoi_circles.size() >= 2) {
 				if (idx_src == -1) {
 					idx_src = std::rand() % voronoi_circles.size();
@@ -1275,7 +1275,7 @@ int main(int, char* []) {
 				glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(Shared_data), &ss);
 			}
 			break;
-		case Shaders::marching:
+		case Shaders::voronoi:
 			shader_use_program(id_program_voronoi);
 			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
