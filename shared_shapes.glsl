@@ -8,4 +8,5 @@ struct Circle {
 struct Physics {
     vec2 pos;
     vec2 dir;
+    float weight;
 };

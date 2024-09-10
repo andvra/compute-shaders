@@ -78,7 +78,13 @@ void main()
             bool does_collide = d < r_me + r_other;
 
             if (does_collide) {
-                physics[idx_other].pos = vec2(10, 10);
+                if (physics[idx_other].weight > physics[idx_circle].weight) {
+                    physics[idx_other].pos = vec2(10, 10);
+                }
+                else {
+                    physics[idx_circle].pos = vec2(10, 10);
+                }
+
             }
         }
     }
