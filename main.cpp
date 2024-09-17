@@ -875,27 +875,32 @@ int main(int, char* []) {
 		Circle
 	};
 
-	auto mold_init_mode = Mold_init_mode::Circle;
+	auto mold_init_mode = Mold_init_mode::Random;
 
 	for (int idx_mold = 0; idx_mold < num_mold_particles; idx_mold++) {
 		float pos_x = window_width / 2.0f;
 		float pos_y = window_width / 2.0f;
 		float angle = 0.0f;
 		auto id_normalized = idx_mold / (num_mold_particles - 1.0f);
+
 		if (mold_init_mode == Mold_init_mode::Random) {
 			pos_x = window_width * (std::rand() % 10000) / 10000.0f;
 			pos_y = window_height * (std::rand() % 10000) / 10000.0f;
 			angle = 2.0f * std::numbers::pi_v<float> *(std::rand() % 10000) / 10000.0f;
 		}
+
 		if (mold_init_mode == Mold_init_mode::Ellipse) {
 			pos_x = window_width / 2.0f + window_width / 4.0f * std::cos(2.0f * std::numbers::pi_v<float> *id_normalized);
 			pos_y = window_height / 2.0f + window_height / 4.0f * std::sin(2.0f * std::numbers::pi_v<float> *id_normalized);
+			angle = 2.0f * std::numbers::pi_v<float> *id_normalized;
 		}
+
 		if (mold_init_mode == Mold_init_mode::Circle) {
 			pos_x = window_width / 2.0f + window_width / 4.0f * std::cos(2.0f * std::numbers::pi_v<float> *id_normalized);
 			pos_y = window_height / 2.0f + window_width / 4.0f * std::sin(2.0f * std::numbers::pi_v<float> *id_normalized);
 			angle = 2.0f * std::numbers::pi_v<float> *id_normalized;
 		}
+
 		auto& cur_mold = mold_particles[idx_mold];
 		type_id = (type_id + 1) % num_types;
 		cur_mold = { .pos = {pos_x, pos_y}, .angle = angle, .type = type_id };
