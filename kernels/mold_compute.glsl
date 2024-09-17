@@ -85,12 +85,14 @@ void move(ivec2 texel_coord) {
         return;
     }
 
-    int pos_x_left = int(mold_particles[idx].pos.x + 10.0f * cos(mold_particles[idx].angle + PI / 4.0f));
-    int pos_y_left = int(mold_particles[idx].pos.y + 10.0f * sin(mold_particles[idx].angle + PI / 4.0f));
-    int pos_x_fwd = int(mold_particles[idx].pos.x + 10.0f * cos(mold_particles[idx].angle));
-    int pos_y_fwd = int(mold_particles[idx].pos.y + 10.0f * sin(mold_particles[idx].angle));
-    int pos_x_right = int(mold_particles[idx].pos.x + 10.0f * cos(mold_particles[idx].angle - PI / 4.0f));
-    int pos_y_right = int(mold_particles[idx].pos.y + 10.0f * sin(mold_particles[idx].angle - PI / 4.0f));
+    float factor_distance = 10.0f;
+
+    int pos_x_left = int(mold_particles[idx].pos.x + factor_distance * cos(mold_particles[idx].angle + PI / 4.0f));
+    int pos_y_left = int(mold_particles[idx].pos.y + factor_distance * sin(mold_particles[idx].angle + PI / 4.0f));
+    int pos_x_fwd = int(mold_particles[idx].pos.x + factor_distance * cos(mold_particles[idx].angle));
+    int pos_y_fwd = int(mold_particles[idx].pos.y + factor_distance * sin(mold_particles[idx].angle));
+    int pos_x_right = int(mold_particles[idx].pos.x + factor_distance * cos(mold_particles[idx].angle - PI / 4.0f));
+    int pos_y_right = int(mold_particles[idx].pos.y + factor_distance * sin(mold_particles[idx].angle - PI / 4.0f));
 
     int search_radius_px = 5;
 

@@ -219,7 +219,7 @@ bool setup_window(int width, int height, std::string title, GLFWwindow*& window)
 		glfwTerminate();
 		return false;
 	}
-	
+
 	glfwMakeContextCurrent(window);
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 	glfwSwapInterval(0);
@@ -336,7 +336,7 @@ bool compile_shader(GLuint& id_shader, const std::string& shader_code, Shader_ty
 
 	std::string version_string = "#version 430 core\n";
 
-	const char* src[2] = { version_string.c_str(), the_code};
+	const char* src[2] = { version_string.c_str(), the_code };
 	glShaderSource(id_shader, 2, src, nullptr);
 	glCompileShader(id_shader);
 
@@ -393,7 +393,7 @@ bool shader_create(std::vector<Shader_info> shader_info, GLuint& id_program) {
 	for (auto idx_shader = 0; idx_shader < num_shaders; idx_shader++) {
 		std::string code_shader = { };
 		auto& cur_shader_info = shader_info[idx_shader];
-		
+
 		std::vector<std::filesystem::path> paths_all(cur_shader_info.paths_shared.begin(), cur_shader_info.paths_shared.end());
 		paths_all.push_back(cur_shader_info.path);
 
@@ -482,8 +482,8 @@ void ssbo_update(GLuint idx_buffer, GLintptr offset, GLsizeiptr size, void* data
 }
 
 int main(int, char* []) {
-	const unsigned int window_width = 1200;
-	const unsigned int window_height = 900;
+	const unsigned int window_width = 1920;
+	const unsigned int window_height = 1080;
 	const unsigned int texture_width = window_width;
 	const unsigned int texture_height = window_height;
 
@@ -615,7 +615,7 @@ int main(int, char* []) {
 	// This is to flip the coordinate system so it works with GLSL
 	toolbar_info.y = window_height - toolbar_info.y - toolbar_info.h;
 	std::vector<float> toolbar_pixels(3 * toolbar_info.w * toolbar_info.h);
-	enum class Toolbar_control_ids { button_toggle_alpha, slider_alpha_level, knob_value};
+	enum class Toolbar_control_ids { button_toggle_alpha, slider_alpha_level, knob_value };
 	std::vector<Toolbar_control> toolbar_controls = {
 		{(int)Toolbar_control_ids::button_toggle_alpha, Toolbar_control_type::button, 20, 50, 100, 50, 0, 0, 0},
 		{(int)Toolbar_control_ids::slider_alpha_level, Toolbar_control_type::slider, 20, 120, 200, 50, 1, 100, 65},
@@ -660,7 +660,7 @@ int main(int, char* []) {
 				c3 = 0;
 			}
 		}
-	};
+		};
 
 	hack_to_correct_font_bitmap_colors();
 
@@ -695,7 +695,7 @@ int main(int, char* []) {
 			}
 			offset_x += char_width;
 		}
-	};
+		};
 
 	auto draw_toolbar = [&toolbar_pixels, &toolbar_info, &draw_chars](int x_start, int x_end, int y_start, int y_end) {
 		for (int col = x_start; col < x_end; col++) {
@@ -719,7 +719,7 @@ int main(int, char* []) {
 			}
 		}
 		draw_chars("Main toolbar", 20, toolbar_info.h - 40);
-	};
+		};
 
 	auto draw_control = [&toolbar_pixels, &toolbar_info, &ssbo_toolbar_colors, &draw_chars, &draw_toolbar](Toolbar_control& toolbar_control, bool do_push_to_device) {
 		auto& c = toolbar_control;
@@ -736,50 +736,50 @@ int main(int, char* []) {
 			}
 			break;
 		case Toolbar_control_type::knob:
-			{
-				float r = c.w / 2.0f;
-				float max_dist = r * r; // Width and height must be equal
-				auto center_x = c.x + c.w / 2;
-				auto center_y = c.y + c.h / 2;
-				float colors[3] = { 1.0,1.0,1.0 };
-				int fixed_y = toolbar_info.h - c.y - 1;
-				int margin_for_chars_px = 100;
-				draw_toolbar(c.x, c.x + c.w + margin_for_chars_px, fixed_y - c.h, fixed_y);
-				for (int col = c.x; col < c.x + c.w; col++) {
-					for (int row = c.y; row < c.y + c.h; row++) {
-						auto cur_dist = (center_x - col) * (center_x - col) + (center_y - row) * (center_y - row);
+		{
+			float r = c.w / 2.0f;
+			float max_dist = r * r; // Width and height must be equal
+			auto center_x = c.x + c.w / 2;
+			auto center_y = c.y + c.h / 2;
+			float colors[3] = { 1.0,1.0,1.0 };
+			int fixed_y = toolbar_info.h - c.y - 1;
+			int margin_for_chars_px = 100;
+			draw_toolbar(c.x, c.x + c.w + margin_for_chars_px, fixed_y - c.h, fixed_y);
+			for (int col = c.x; col < c.x + c.w; col++) {
+				for (int row = c.y; row < c.y + c.h; row++) {
+					auto cur_dist = (center_x - col) * (center_x - col) + (center_y - row) * (center_y - row);
 
-						if(cur_dist > max_dist) {
-							continue;
-						}
+					if (cur_dist > max_dist) {
+						continue;
+					}
 
-						int row_fixed = toolbar_info.h - row - 1;
-						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 0] = colors[0];
-						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 1] = colors[1];
-						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 2] = colors[2];
-					}
+					int row_fixed = toolbar_info.h - row - 1;
+					toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 0] = colors[0];
+					toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 1] = colors[1];
+					toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 2] = colors[2];
 				}
-				float factor = (c.val_cur - c.val_min) / (float)(c.val_max - c.val_min);
-				float diff_from_full_circle_rad = 0.5f;
-				float angle_rad = diff_from_full_circle_rad + factor * (2.0f * 3.1415f - 2.0f * diff_from_full_circle_rad);
-				float dot_r = 5;
-				int dot_center_x = center_x + static_cast<int>((r - dot_r) * std::sin(-angle_rad));
-				int dot_start_x = static_cast<int>(dot_center_x - dot_r);
-				int dot_end_x = static_cast<int>(dot_start_x + dot_r);
-				int dot_center_y = center_y + static_cast<int>((r - dot_r) * std::cos(angle_rad));
-				int dot_start_y = static_cast<int>(dot_center_y - dot_r);
-				int dot_end_y = static_cast<int>(dot_start_y + dot_r);
-				for (int col = dot_start_x; col <= dot_end_x; col++) {
-					for (int row = dot_start_y; row <= dot_end_y; row++) {
-						int row_fixed = toolbar_info.h - row - 1;
-						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 0] = 0.4f;
-						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 1] = 0.5f;
-						toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 2] = 0.9f;
-					}
-				}
-				draw_chars(std::to_string(c.val_cur), c.x + c.w + 10, toolbar_info.h - c.y - 1 - c.h / 2 - 12);
 			}
-			break;
+			float factor = (c.val_cur - c.val_min) / (float)(c.val_max - c.val_min);
+			float diff_from_full_circle_rad = 0.5f;
+			float angle_rad = diff_from_full_circle_rad + factor * (2.0f * 3.1415f - 2.0f * diff_from_full_circle_rad);
+			float dot_r = 5;
+			int dot_center_x = center_x + static_cast<int>((r - dot_r) * std::sin(-angle_rad));
+			int dot_start_x = static_cast<int>(dot_center_x - dot_r);
+			int dot_end_x = static_cast<int>(dot_start_x + dot_r);
+			int dot_center_y = center_y + static_cast<int>((r - dot_r) * std::cos(angle_rad));
+			int dot_start_y = static_cast<int>(dot_center_y - dot_r);
+			int dot_end_y = static_cast<int>(dot_start_y + dot_r);
+			for (int col = dot_start_x; col <= dot_end_x; col++) {
+				for (int row = dot_start_y; row <= dot_end_y; row++) {
+					int row_fixed = toolbar_info.h - row - 1;
+					toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 0] = 0.4f;
+					toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 1] = 0.5f;
+					toolbar_pixels[3 * (col + row_fixed * toolbar_info.w) + 2] = 0.9f;
+				}
+			}
+			draw_chars(std::to_string(c.val_cur), c.x + c.w + 10, toolbar_info.h - c.y - 1 - c.h / 2 - 12);
+		}
+		break;
 		case Toolbar_control_type::slider:
 			int anchor_width = 5;
 			int anchor_min_x = -1;
@@ -806,9 +806,9 @@ int main(int, char* []) {
 		}
 
 		if (do_push_to_device) {
-			ssbo_update(ssbo_toolbar_colors, 0, sizeof(float)* toolbar_pixels.size(), toolbar_pixels.data());
+			ssbo_update(ssbo_toolbar_colors, 0, sizeof(float) * toolbar_pixels.size(), toolbar_pixels.data());
 		}
-	};
+		};
 
 	{
 		for (int i = 0; i < num_voronoi_circles; i++) {
@@ -862,24 +862,48 @@ int main(int, char* []) {
 		shader_set_float(id_program_voronoi, "toolbar_opacity", toolbar_opacity);
 	}
 
-	size_t num_mold_particles = 25'000;
+	size_t num_mold_particles = 25000;
 
 	std::vector<Mold_particle> mold_particles(num_mold_particles);
 	int type_id = 0;
-	int num_types = 1;
+	int num_types = 3;
 	float t_step_ms = 20.0f;	// This is how long one physic step should be
 
-	for (auto& x : mold_particles) {
-		float pos_x = window_width * (std::rand() % 10000) / 10000.0f;
-		float pos_y = window_height * (std::rand() % 10000) / 10000.0f;
-		float angle = 2.0f * std::numbers::pi_v<float> * (std::rand() % 10000) / 10000.0f;
-		x = { .pos = {pos_x,pos_y}, .angle = angle, .type = type_id };
+	enum class Mold_init_mode {
+		Random,
+		Ellipse,
+		Circle
+	};
+
+	auto mold_init_mode = Mold_init_mode::Circle;
+
+	for (int idx_mold = 0; idx_mold < num_mold_particles; idx_mold++) {
+		float pos_x = window_width / 2.0f;
+		float pos_y = window_width / 2.0f;
+		float angle = 0.0f;
+		auto id_normalized = idx_mold / (num_mold_particles - 1.0f);
+		if (mold_init_mode == Mold_init_mode::Random) {
+			pos_x = window_width * (std::rand() % 10000) / 10000.0f;
+			pos_y = window_height * (std::rand() % 10000) / 10000.0f;
+			angle = 2.0f * std::numbers::pi_v<float> *(std::rand() % 10000) / 10000.0f;
+		}
+		if (mold_init_mode == Mold_init_mode::Ellipse) {
+			pos_x = window_width / 2.0f + window_width / 4.0f * std::cos(2.0f * std::numbers::pi_v<float> *id_normalized);
+			pos_y = window_height / 2.0f + window_height / 4.0f * std::sin(2.0f * std::numbers::pi_v<float> *id_normalized);
+		}
+		if (mold_init_mode == Mold_init_mode::Circle) {
+			pos_x = window_width / 2.0f + window_width / 4.0f * std::cos(2.0f * std::numbers::pi_v<float> *id_normalized);
+			pos_y = window_height / 2.0f + window_width / 4.0f * std::sin(2.0f * std::numbers::pi_v<float> *id_normalized);
+			angle = 2.0f * std::numbers::pi_v<float> *id_normalized;
+		}
+		auto& cur_mold = mold_particles[idx_mold];
 		type_id = (type_id + 1) % num_types;
+		cur_mold = { .pos = {pos_x, pos_y}, .angle = angle, .type = type_id };
 	}
 
 	setup_ssbo(static_cast<GLuint>(Ssbo_index::mold), GL_DYNAMIC_DRAW, sizeof(Mold_particle) * mold_particles.size(), mold_particles.data());
 
-	std::vector<float> mold_intensities(window_width * window_height* num_types);
+	std::vector<float> mold_intensities(window_width * window_height * num_types);
 
 	setup_ssbo(static_cast<GLuint>(Ssbo_index::mold_intensities), GL_DYNAMIC_DRAW, sizeof(float) * mold_intensities.size(), mold_intensities.data());
 
@@ -926,7 +950,7 @@ int main(int, char* []) {
 	float world_max_y = 100.0f * window_height / window_width;
 	float step_ms = 0.01f;
 
-	setup_ssbo(static_cast<GLuint>(Ssbo_index::physics_circles), GL_DYNAMIC_DRAW, sizeof(Circle)* circles_physics.size(), circles_physics.data());
+	setup_ssbo(static_cast<GLuint>(Ssbo_index::physics_circles), GL_DYNAMIC_DRAW, sizeof(Circle) * circles_physics.size(), circles_physics.data());
 	setup_ssbo(static_cast<GLuint>(Ssbo_index::physics_physics), GL_DYNAMIC_DRAW, sizeof(Physics) * physics_physics.size(), physics_physics.data());
 
 	shader_use_program(id_program_physics_compute);
@@ -969,7 +993,7 @@ int main(int, char* []) {
 		auto ret = key_info[key_code].is_pressed && !key_info[key_code].has_been_read;
 		key_info[key_code].has_been_read = true;
 		return ret;
-	};
+		};
 
 	auto key_is_pressed = [](int key_code) -> bool {
 		auto num_allocated_keys = sizeof(key_info) / sizeof(Key_info);
@@ -978,7 +1002,7 @@ int main(int, char* []) {
 		}
 		key_info[key_code].has_been_read = true;
 		return key_info[key_code].is_pressed;
-	};
+		};
 
 	glm::vec3 the_camera = glm::vec3(0, 15, 15);
 	glm::vec3 the_focus = glm::vec3(10, 0, 10);
@@ -991,7 +1015,7 @@ int main(int, char* []) {
 	mouse_move_info.new_y = window_height / 2;
 	mouse_move_info.old_x = window_width / 2;
 	mouse_move_info.old_y = window_height / 2;
-	
+
 	int idx_dest = -1;
 	int idx_src = -1;
 	float t_move_start = 0;
@@ -1106,23 +1130,23 @@ int main(int, char* []) {
 							shader_set_bool(id_program_voronoi, "use_toolbar_alpha", use_toolbar_alpha);
 							break;
 						case Toolbar_control_type::slider:
-							{
-								int anchor_width = 10;
-								int anchor_min_x = -1;
-								int anchor_max_x = -1;
-								if (c.val_max - c.val_min > 0) {
-									float factor = (c.val_cur - c.val_min) / (float)(c.val_max - c.val_min);
-									int available_pixels = c.w - anchor_width;
+						{
+							int anchor_width = 10;
+							int anchor_min_x = -1;
+							int anchor_max_x = -1;
+							if (c.val_max - c.val_min > 0) {
+								float factor = (c.val_cur - c.val_min) / (float)(c.val_max - c.val_min);
+								int available_pixels = c.w - anchor_width;
 
-									anchor_min_x = c.x + static_cast<int>(factor * available_pixels);
-									anchor_max_x = anchor_min_x + anchor_width;
-								}
-								if (pos_rel_x >= anchor_min_x && pos_rel_x < anchor_max_x) {
-									idx_active_control = c.id;
-									// TODO: We are pulling the slider
-								}
+								anchor_min_x = c.x + static_cast<int>(factor * available_pixels);
+								anchor_max_x = anchor_min_x + anchor_width;
 							}
-							break;
+							if (pos_rel_x >= anchor_min_x && pos_rel_x < anchor_max_x) {
+								idx_active_control = c.id;
+								// TODO: We are pulling the slider
+							}
+						}
+						break;
 						case Toolbar_control_type::knob:
 							idx_active_control = c.id;
 							knob_down_start_x = static_cast<int>(xpos);
@@ -1150,11 +1174,11 @@ int main(int, char* []) {
 			auto y_fixed = window_height - ypos;
 			voronoi_physics[idx_active_circle].pos[0] = static_cast<float>(xpos);
 			voronoi_physics[idx_active_circle].pos[1] = static_cast<float>(y_fixed);
-			block_ids[idx_active_circle] = {(int)xpos / block_size,(int)y_fixed / block_size };
+			block_ids[idx_active_circle] = { (int)xpos / block_size,(int)y_fixed / block_size };
 
 			//ssbo_update(ssbo_voronoi_circles, sizeof(Circle)* idx_active_circle, sizeof(Circle), &voronoi_circles[idx_active_circle]);
-			ssbo_update(ssbo_voronoi_physics, sizeof(Physics)* idx_active_circle, sizeof(Physics), &voronoi_physics[idx_active_circle]);
-			ssbo_update(ssbo_block_ids, sizeof(Block_id)* idx_active_circle, sizeof(Block_id), &block_ids[idx_active_circle]);
+			ssbo_update(ssbo_voronoi_physics, sizeof(Physics) * idx_active_circle, sizeof(Physics), &voronoi_physics[idx_active_circle]);
+			ssbo_update(ssbo_block_ids, sizeof(Block_id) * idx_active_circle, sizeof(Block_id), &block_ids[idx_active_circle]);
 		}
 		if (shader == Shaders::voronoi && mouse_button_info[0].is_pressed && moving_toolbar) {
 			double xpos, ypos;
@@ -1168,19 +1192,19 @@ int main(int, char* []) {
 			double xpos, ypos;
 			glfwGetCursorPos(window, &xpos, &ypos);
 			auto& c = toolbar_controls[idx_active_control];
-			switch(c.type) {
+			switch (c.type) {
 			case Toolbar_control_type::slider:
-				{
-					int xrel = static_cast<int>(xpos) - toolbar_info.x - c.x;
-					float pos_factor = xrel / (float)c.w;
-					int new_val = c.val_min + static_cast<int>(pos_factor * (c.val_max - c.val_min));
-					new_val = std::clamp(new_val, c.val_min, c.val_max);
-					c.val_cur = new_val;
-					toolbar_opacity = toolbar_opacity_min + (1 - toolbar_opacity_min) * ((float)(c.val_cur - c.val_min) / (c.val_max - c.val_min));
-					shader_use_program(id_program_voronoi);
-					shader_set_float(id_program_voronoi, "toolbar_opacity", toolbar_opacity);
-				}
-				break;
+			{
+				int xrel = static_cast<int>(xpos) - toolbar_info.x - c.x;
+				float pos_factor = xrel / (float)c.w;
+				int new_val = c.val_min + static_cast<int>(pos_factor * (c.val_max - c.val_min));
+				new_val = std::clamp(new_val, c.val_min, c.val_max);
+				c.val_cur = new_val;
+				toolbar_opacity = toolbar_opacity_min + (1 - toolbar_opacity_min) * ((float)(c.val_cur - c.val_min) / (c.val_max - c.val_min));
+				shader_use_program(id_program_voronoi);
+				shader_set_float(id_program_voronoi, "toolbar_opacity", toolbar_opacity);
+			}
+			break;
 			case Toolbar_control_type::knob:
 				auto move_range = 200.0f;
 				auto pos_factor = (xpos - knob_down_start_x) / move_range;
@@ -1209,8 +1233,8 @@ int main(int, char* []) {
 						voronoi_physics[idx_src].pos[0] = voronoi_physics[idx_dest].pos[0];
 						voronoi_physics[idx_src].pos[1] = voronoi_physics[idx_dest].pos[1];
 						//ssbo_update(ssbo_circles, sizeof(Circle)* idx_src, sizeof(Circle), &voronoi_circles[idx_src]);
-						ssbo_update(ssbo_voronoi_physics, sizeof(Physics)* idx_src, sizeof(Physics), &voronoi_physics[idx_src]);
-						ssbo_update(ssbo_block_ids, sizeof(Block_id)* idx_src, sizeof(Block_id), &block_ids[idx_dest]);
+						ssbo_update(ssbo_voronoi_physics, sizeof(Physics) * idx_src, sizeof(Physics), &voronoi_physics[idx_src]);
+						ssbo_update(ssbo_block_ids, sizeof(Block_id) * idx_src, sizeof(Block_id), &block_ids[idx_dest]);
 						idx_src = idx_dest;
 					}
 					while ((idx_dest = std::rand() % voronoi_circles.size()) == idx_src);
@@ -1234,7 +1258,7 @@ int main(int, char* []) {
 				block_ids[idx_src] = { (int)voronoi_physics[idx_src].pos[0] / block_size, (int)voronoi_physics[idx_src].pos[1] / block_size };
 				//ssbo_update(ssbo_circles, sizeof(Circle)* idx_src, sizeof(Circle), &voronoi_circles[idx_src]);
 				ssbo_update(ssbo_voronoi_physics, sizeof(Physics) * idx_src, sizeof(Physics), &voronoi_physics[idx_src]);
-				ssbo_update(ssbo_block_ids, sizeof(Block_id)* idx_src, sizeof(Block_id), &block_ids[idx_src]);
+				ssbo_update(ssbo_block_ids, sizeof(Block_id) * idx_src, sizeof(Block_id), &block_ids[idx_src]);
 			}
 		}
 
@@ -1254,7 +1278,7 @@ int main(int, char* []) {
 		}
 		break;
 		case Shaders::mold:
-			{
+		{
 			t_acc_mold_move_ms += t_delta_s * 1000.0f;
 			while (t_acc_mold_move_ms > t_step_ms) {
 				shader_use_program(id_program_mold_compute);
@@ -1271,8 +1295,8 @@ int main(int, char* []) {
 			shader_use_program(id_program_mold_render);
 			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-			}
-			break;
+		}
+		break;
 		case Shaders::funky:
 			shader_use_program(id_program_funky);
 			shader_set_float(id_program_funky, "t", t_current_frame);
@@ -1282,26 +1306,26 @@ int main(int, char* []) {
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 			break;
 		case Shaders::rays:
-			{
-				shader_use_program(id_program_rays);
-				shader_set_float(id_program_rays, "t", t_current_frame);
-				shader_set_vec2(id_program_rays, "mouse_pos", glm::vec2(xpos, ypos));
-				the_focus.x = std::sin(angle_alpha) * std::cos(angle_beta);
-				the_focus.y = std::sin(angle_beta);
-				the_focus.z = std::cos(angle_alpha) * std::cos(angle_beta);
-				the_focus /= glm::length(the_focus);
-				shader_set_vec3(id_program_rays, "the_focus", the_focus);
-				shader_set_vec3(id_program_rays, "the_camera", the_camera);
-				glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
-				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
-				Shared_data ss{};
-				glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_shared_data);
-				glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(Shared_data), &ss);
-				ss.host_idx_selected_sphere = ss.device_idx_selected_sphere;
-				ss.device_idx_selected_sphere = -1;
-				glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(Shared_data), &ss);
-			}
-			break;
+		{
+			shader_use_program(id_program_rays);
+			shader_set_float(id_program_rays, "t", t_current_frame);
+			shader_set_vec2(id_program_rays, "mouse_pos", glm::vec2(xpos, ypos));
+			the_focus.x = std::sin(angle_alpha) * std::cos(angle_beta);
+			the_focus.y = std::sin(angle_beta);
+			the_focus.z = std::cos(angle_alpha) * std::cos(angle_beta);
+			the_focus /= glm::length(the_focus);
+			shader_set_vec3(id_program_rays, "the_focus", the_focus);
+			shader_set_vec3(id_program_rays, "the_camera", the_camera);
+			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+			Shared_data ss{};
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_shared_data);
+			glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(Shared_data), &ss);
+			ss.host_idx_selected_sphere = ss.device_idx_selected_sphere;
+			ss.device_idx_selected_sphere = -1;
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(Shared_data), &ss);
+		}
+		break;
 		case Shaders::voronoi:
 			shader_use_program(id_program_voronoi);
 			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
