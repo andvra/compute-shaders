@@ -59,7 +59,8 @@ struct Circle {
 struct Physics {
 	alignas(8) float pos[2];
 	alignas(8) float dir[2];
-	float weight;
+	float speed;
+	float mass;
 };
 
 struct Mold_particle {
@@ -898,15 +899,18 @@ int main(int, char* []) {
 	physics_physics[0].pos[1] = 20;
 	physics_physics[0].dir[0] = 1;
 	physics_physics[0].dir[1] = 1;
-	physics_physics[0].weight = 3;
 	circles_physics[0].r = 5;
+	physics_physics[0].speed = 1;
+	physics_physics[0].mass = circles_physics[0].r * circles_physics[0].r;
 	circles_physics[0].r_square = circles_physics[0].r * circles_physics[0].r;
 	circles_physics[1] = circles_physics[0];
 	physics_physics[1] = physics_physics[0];
 	circles_physics[1].color[1] = 0;
 	physics_physics[1].pos[1] = 50;
 	physics_physics[1].dir[0] = 0.7;
-	physics_physics[1].weight = 2;
+	circles_physics[1].r = 5;
+	physics_physics[1].mass = circles_physics[1].r * circles_physics[1].r;
+	physics_physics[1].speed = 1;
 
 	float world_min_x = 0.0f;
 	float world_max_x = 100.0f;

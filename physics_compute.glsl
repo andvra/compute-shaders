@@ -31,61 +31,91 @@ void main()
 
     uint num_circles = circles.length();
 
-    if (idx_circle < num_circles) {
-        float r = circles[idx_circle].r;
-        vec2 cur_pos = physics[idx_circle].pos;
-        vec2 cur_dir = normalize(physics[idx_circle].dir);
-        vec2 move = step_ms * cur_dir;
-        vec2 next_pos = cur_pos + move;
+    if (idx_circle >= num_circles) {
+        return;
+    }
 
-        if ((next_pos.x > world_max_x) || abs(next_pos.x - world_max_x) < r) {
-            float t_collision = (world_max_x - cur_pos.x - r) / move.x;
-            physics[idx_circle].pos.x = world_max_x - r - (1 - t_collision) * cur_dir.x;
-            physics[idx_circle].dir.x = -physics[idx_circle].dir.x;
-        }
-        else if ((next_pos.x < world_min_x) || abs(next_pos.x - world_min_x) < r) {
-            float t_collision = (cur_pos.x - r - world_min_x) / move.x;
-            physics[idx_circle].pos.x = world_min_x + r - (1 - t_collision) * cur_dir.x;
-            physics[idx_circle].dir.x = -physics[idx_circle].dir.x;
-        }
-        else {
-            physics[idx_circle].pos.x = next_pos.x;
-        }
 
-        if ((next_pos.y > world_max_y) || abs(next_pos.y - world_max_y) < r) {
-            float t_collision = (world_max_y - cur_pos.y - r) / move.y;
-            physics[idx_circle].pos.y = world_max_y - r - (1 - t_collision) * cur_dir.y;
-            physics[idx_circle].dir.y = -physics[idx_circle].dir.y;
-        }
-        else if ((next_pos.y < world_min_y) || abs(next_pos.y - world_min_y) < r) {
-            float t_collision = (cur_pos.y - r - world_min_y) / move.y;
-            physics[idx_circle].pos.y = world_min_y + r - (1 - t_collision) * cur_dir.y;
-            physics[idx_circle].dir.y = -physics[idx_circle].dir.y;
-        }
-        else {
-            physics[idx_circle].pos.y = next_pos.y;
-        }
+    // TODO: Add a pass first where we see what happens first - collision with any of the objects or the walls?
+    //  If another object, which one?
 
-        // Only comparing to circles with higher indices is a way to avoid
-        //  doing collision detection both ways (circle A --> circle B and circle B --> circle A)
-        for (uint idx_other = idx_circle + 1; idx_other < num_circles; idx_other++) {
-            vec2 pos_me = physics[idx_circle].pos;
-            vec2 pos_other = physics[idx_other].pos;
-            float r_me = circles[idx_circle].r;
-            float r_other = circles[idx_other].r;
-            float d = distance(pos_me, pos_other);
 
-            bool does_collide = d < r_me + r_other;
 
-            if (does_collide) {
-                if (physics[idx_other].weight > physics[idx_circle].weight) {
-                    physics[idx_other].pos = vec2(10, 10);
-                }
-                else {
-                    physics[idx_circle].pos = vec2(10, 10);
-                }
 
+
+    float r = circles[idx_circle].r;
+    vec2 pos_initial = physics[idx_circle].pos;
+    vec2 dir_initial = normalize(physics[idx_circle].dir);
+    float speed = physics[idx_circle].speed;
+    vec2 move = step_ms * speed * dir_initial;
+    vec2 pos_next = pos_initial + move;
+
+    if ((pos_next.x > world_max_x) || abs(pos_next.x - world_max_x) < r) {
+        float t_collision = (world_max_x - pos_initial.x - r) / move.x;
+        physics[idx_circle].pos.x = world_max_x - r - (1 - t_collision) * dir_initial.x;
+        physics[idx_circle].dir.x = -physics[idx_circle].dir.x;
+    }
+    else if ((pos_next.x < world_min_x) || abs(pos_next.x - world_min_x) < r) {
+        float t_collision = (pos_initial.x - r - world_min_x) / move.x;
+        physics[idx_circle].pos.x = world_min_x + r - (1 - t_collision) * dir_initial.x;
+        physics[idx_circle].dir.x = -physics[idx_circle].dir.x;
+    }
+    else {
+        physics[idx_circle].pos.x = pos_next.x;
+    }
+
+    if ((pos_next.y > world_max_y) || abs(pos_next.y - world_max_y) < r) {
+        float t_collision = (world_max_y - pos_initial.y - r) / move.y;
+        physics[idx_circle].pos.y = world_max_y - r - (1 - t_collision) * dir_initial.y;
+        physics[idx_circle].dir.y = -physics[idx_circle].dir.y;
+    }
+    else if ((pos_next.y < world_min_y) || abs(pos_next.y - world_min_y) < r) {
+        float t_collision = (pos_initial.y - r - world_min_y) / move.y;
+        physics[idx_circle].pos.y = world_min_y + r - (1 - t_collision) * dir_initial.y;
+        physics[idx_circle].dir.y = -physics[idx_circle].dir.y;
+    }
+    else {
+        physics[idx_circle].pos.y = pos_next.y;
+    }
+
+    // Only comparing to circles with higher indices is a way to avoid
+    //  doing collision detection both ways (circle A --> circle B and circle B --> circle A)
+    for (uint idx_other = idx_circle + 1; idx_other < num_circles; idx_other++) {
+        vec2 pos_me = physics[idx_circle].pos;
+        vec2 pos_other = physics[idx_other].pos;
+        float r_me = circles[idx_circle].r;
+        float r_other = circles[idx_other].r;
+        float d = distance(pos_me, pos_other);
+
+        bool does_collide = d < r_me + r_other;
+
+        if (does_collide) {
+            float t_collision = ((r_me + r_other) - d) / distance(pos_initial, pos_me);
+            float t_after_collision = 1 - t_collision;
+            float s1 = physics[idx_circle].speed;
+            float m1 = physics[idx_circle].mass;
+            vec2 v1 = s1 * physics[idx_circle].dir;
+            vec2 x1 = physics[idx_circle].pos;
+            float s2 = physics[idx_other].speed;
+            float m2 = physics[idx_other].mass;
+            vec2 v2 = s2 * physics[idx_other].dir;
+            vec2 x2 = physics[idx_other].pos;
+
+            float d = length(x1 - x2);
+            float d_square = d * d;
+
+            vec2 v1_new = v1 - (2 * m2 / (m1 + m2)) * (dot(v1 - v2, x1 - x2) / d_square) * (x1 - x2);
+            vec2 v2_new = v2 - (2 * m1 / (m1 + m2)) * (dot(v2 - v1, x2 - x1) / d_square) * (x2 - x1);
+
+            if (m1 * length(v1_new) + m2 * length(v2_new) > 1.2 * (m1 * length(v1) + m2 * length(v2))) {
+                circles[idx_circle].color[0] = 0;
             }
+
+            physics[idx_circle].dir = normalize(v1_new);
+            physics[idx_circle].speed = length(v1_new);
+            physics[idx_other].dir = normalize(v2_new);
+            physics[idx_circle].speed = length(v2_new);
+
         }
     }
 }
