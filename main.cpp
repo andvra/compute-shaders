@@ -65,6 +65,7 @@ struct Physics {
 
 struct Mold_particle {
 	alignas(8) float pos[2];
+	alignas(8) float pos_last[2];
 	float angle;
 	int type;
 };

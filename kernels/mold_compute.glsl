@@ -26,10 +26,19 @@ void release_mold(ivec2 texel_coord) {
         return;
     }
 
-    ivec2 pos = ivec2(mold_particles[idx_particle].pos);
+    int num_line_steps = 10;
+    vec2 pos_last = mold_particles[idx_particle].pos;
+    vec2 pos_cur = mold_particles[idx_particle].pos_last;
 
-    int idx_intensity = num_types * (pos.x + image_width * pos.y) + mold_particles[idx_particle].type;
-    mold_intensity[idx_intensity] = 1.0;
+    // TODO: This is a primitive line drawing algorithm. Use a better one, with anti-aliasing and no upper limit
+    //  to the number of steps required
+    for (int idx_step = 0; idx_step < num_line_steps; idx_step++) {
+        vec2 pos_write = pos_cur + idx_step * (pos_last - pos_cur) / float(num_line_steps - 1);
+        ivec2 pos = ivec2(pos_write);
+
+        int idx_intensity = num_types * (pos.x + image_width * pos.y) + mold_particles[idx_particle].type;
+        mold_intensity[idx_intensity] = 1.0;
+    }
 }
 
 void darken(ivec2 texel_coord) {
@@ -130,8 +139,8 @@ void move(ivec2 texel_coord) {
     }
 
     if (do_move) {
-        mold_particles[idx].pos.x = new_x;
-        mold_particles[idx].pos.y = new_y;
+        mold_particles[idx].pos_last = mold_particles[idx].pos;
+        mold_particles[idx].pos = vec2(new_x, new_y);
     }
 }
 

@@ -14,6 +14,7 @@ struct Physics {
 
 struct Mold_particle {
     vec2 pos;
+    vec2 pos_last;
     float angle;
     int type;
 };
