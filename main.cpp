@@ -862,11 +862,11 @@ int main(int, char* []) {
 		shader_set_float(id_program_voronoi, "toolbar_opacity", toolbar_opacity);
 	}
 
-	size_t num_mold_particles = 25000;
+	size_t num_mold_particles = 100'000;
 
 	std::vector<Mold_particle> mold_particles(num_mold_particles);
 	int type_id = 0;
-	int num_types = 3;
+	int num_types = 2;
 	float t_step_ms = 20.0f;	// This is how long one physic step should be
 
 	enum class Mold_init_mode {

@@ -85,30 +85,35 @@ void move(ivec2 texel_coord) {
         return;
     }
 
-    float factor_distance = 10.0f;
-
-    int pos_x_left = int(mold_particles[idx].pos.x + factor_distance * cos(mold_particles[idx].angle + PI / 4.0f));
-    int pos_y_left = int(mold_particles[idx].pos.y + factor_distance * sin(mold_particles[idx].angle + PI / 4.0f));
-    int pos_x_fwd = int(mold_particles[idx].pos.x + factor_distance * cos(mold_particles[idx].angle));
-    int pos_y_fwd = int(mold_particles[idx].pos.y + factor_distance * sin(mold_particles[idx].angle));
-    int pos_x_right = int(mold_particles[idx].pos.x + factor_distance * cos(mold_particles[idx].angle - PI / 4.0f));
-    int pos_y_right = int(mold_particles[idx].pos.y + factor_distance * sin(mold_particles[idx].angle - PI / 4.0f));
-
+    float factor_distance_px = 10.0f;
     int search_radius_px = 5;
+
+    int pos_x_left = int(mold_particles[idx].pos.x + factor_distance_px * cos(mold_particles[idx].angle + PI / 4.0f));
+    int pos_y_left = int(mold_particles[idx].pos.y + factor_distance_px * sin(mold_particles[idx].angle + PI / 4.0f));
+    int pos_x_fwd = int(mold_particles[idx].pos.x + factor_distance_px * cos(mold_particles[idx].angle));
+    int pos_y_fwd = int(mold_particles[idx].pos.y + factor_distance_px * sin(mold_particles[idx].angle));
+    int pos_x_right = int(mold_particles[idx].pos.x + factor_distance_px * cos(mold_particles[idx].angle - PI / 4.0f));
+    int pos_y_right = int(mold_particles[idx].pos.y + factor_distance_px * sin(mold_particles[idx].angle - PI / 4.0f));
 
     float val_left = get_area_value(ivec2(pos_x_left, pos_y_left), search_radius_px, mold_particles[idx].type);
     float val_fwd = get_area_value(ivec2(pos_x_fwd, pos_y_fwd), search_radius_px, mold_particles[idx].type);
     float val_right = get_area_value(ivec2(pos_x_right, pos_y_right), search_radius_px, mold_particles[idx].type);
-    float max_val = max(max(val_left, val_fwd), val_right);
+    
+    float abs_left = abs(val_left);
+    float abs_right = abs(val_right);
+    float abs_fwd = abs(val_fwd);
 
-    float factor_rotate = 0.1f;
-    if (max_val > 0) {
-        if (max_val == val_left && max_val > 0) {
-            mold_particles[idx].angle += factor_rotate * t_step_ms;
-        }
-        if (max_val == val_right) {
-            mold_particles[idx].angle -= factor_rotate * t_step_ms;
-        }
+    bool is_largest_left = abs_left > abs_right && abs_left > abs_fwd;
+    bool is_largest_right = abs_right > abs_left && abs_right > abs_fwd;
+
+    float factor_rotate = 2 * PI * 0.015f;
+
+    if (is_largest_left) {
+        mold_particles[idx].angle += factor_rotate * t_step_ms;
+    }
+
+    if (is_largest_right) {
+        mold_particles[idx].angle -= factor_rotate * t_step_ms;
     }
 
     float factor_move = 0.1f;
