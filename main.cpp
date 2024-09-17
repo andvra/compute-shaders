@@ -15,8 +15,8 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void renderQuad();
 
 // timing 
-float deltaTime = 0.0f; // time between current frame and last frame
-float lastFrame = 0.0f; // time of last frame
+float t_delta_s = 0.0f; // time between current frame and last frame
+float t_last_frame = 0.0f; // time of last frame
 
 auto background_center = glm::vec2(500, 500);
 enum class Shaders { funky, rays, voronoi, solver, mold, physics };
@@ -866,6 +866,8 @@ int main(int, char* []) {
 	std::vector<Mold_particle> mold_particles(num_mold_particles);
 	int type_id = 0;
 	int num_types = 1;
+	float t_step_ms = 20.0f;	// This is how long one physic step should be
+
 	for (auto& x : mold_particles) {
 		float pos_x = window_width * (std::rand() % 10000) / 10000.0f;
 		float pos_y = window_height * (std::rand() % 10000) / 10000.0f;
@@ -888,6 +890,7 @@ int main(int, char* []) {
 	shader_set_int(id_program_mold_compute, "num_types", num_types);
 	shader_set_int(id_program_mold_compute, "image_width", window_width);
 	shader_set_int(id_program_mold_compute, "image_height", window_height);
+	shader_set_float(id_program_mold_compute, "t_step_ms", t_step_ms);
 
 	shader_use_program(id_program_funky);
 	shader_set_int(id_program_funky, "w", window_width);
@@ -994,18 +997,20 @@ int main(int, char* []) {
 	float t_move_end = 0;
 	float move_origin[2] = { 0,0 };
 	float move_vector[2] = { 0,0 };
+	float t_acc_mold_move_ms = 0.0f;
 
 	while (!glfwWindowShouldClose(window))
 	{
-		float currentFrame = static_cast<float>(glfwGetTime());
-		deltaTime = currentFrame - lastFrame;
-		lastFrame = currentFrame;
+		float t_current_frame = static_cast<float>(glfwGetTime());
+		t_delta_s = t_current_frame - t_last_frame;
+		t_last_frame = t_current_frame;
 
-		float fps_print_diff_time = currentFrame - last_fps_time;
+		float fps_print_diff_time = t_current_frame - last_fps_time;
+
 		if (fps_print_diff_time > 1.0f) {
 			std::cout << "FPS: " << frame_counter / fps_print_diff_time << " (" << 1000 * fps_print_diff_time / frame_counter << " ms per frame)" << std::endl;
 			frame_counter = 0;
-			last_fps_time = currentFrame;
+			last_fps_time = t_current_frame;
 		}
 
 		if (key_was_just_pressed(GLFW_KEY_ESCAPE)) {
@@ -1021,39 +1026,40 @@ int main(int, char* []) {
 			shader = Shaders::voronoi;
 		}
 		if (key_was_just_pressed(GLFW_KEY_4)) {
+			t_acc_mold_move_ms = 0.0f;
 			shader = Shaders::mold;
 		}
 		if (key_was_just_pressed(GLFW_KEY_5)) {
 			shader = Shaders::physics;
 		}
 		if (key_is_pressed(GLFW_KEY_W)) {
-			the_camera += the_focus * deltaTime * 5.0f;
+			the_camera += the_focus * t_delta_s * 5.0f;
 		}
 		if (key_is_pressed(GLFW_KEY_S)) {
-			the_camera -= the_focus * deltaTime * 5.0f;
+			the_camera -= the_focus * t_delta_s * 5.0f;
 		}
 		if (key_is_pressed(GLFW_KEY_A)) {
-			the_camera -= glm::normalize(glm::cross(the_focus, glm::vec3(0, 1, 0))) * deltaTime * 5.0f;
+			the_camera -= glm::normalize(glm::cross(the_focus, glm::vec3(0, 1, 0))) * t_delta_s * 5.0f;
 		}
 		if (key_is_pressed(GLFW_KEY_D)) {
-			the_camera += glm::normalize(glm::cross(the_focus, glm::vec3(0, 1, 0))) * deltaTime * 5.0f;
+			the_camera += glm::normalize(glm::cross(the_focus, glm::vec3(0, 1, 0))) * t_delta_s * 5.0f;
 		}
 		if (key_is_pressed(GLFW_KEY_Q)) {
-			the_camera += glm::vec3(0, 1, 0) * deltaTime * 5.0f;
+			the_camera += glm::vec3(0, 1, 0) * t_delta_s * 5.0f;
 		}
 		if (key_is_pressed(GLFW_KEY_Z)) {
-			the_camera -= glm::vec3(0, 1, 0) * deltaTime * 5.0f;
+			the_camera -= glm::vec3(0, 1, 0) * t_delta_s * 5.0f;
 		}
 		if (shader == Shaders::rays && !mouse_move_info.has_been_read) {
 			float move_factor = 1.0f;
-			angle_alpha += (mouse_move_info.old_x - mouse_move_info.new_x) * deltaTime * move_factor;
+			angle_alpha += (mouse_move_info.old_x - mouse_move_info.new_x) * t_delta_s * move_factor;
 			if (angle_alpha < 0) {
 				angle_alpha += 2 * std::numbers::pi_v<float>;
 			}
 			if (angle_alpha > 2 * std::numbers::pi_v<float>) {
 				angle_alpha -= 2 * std::numbers::pi_v<float>;
 			}
-			angle_beta += (mouse_move_info.old_y - mouse_move_info.new_y) * deltaTime * move_factor;
+			angle_beta += (mouse_move_info.old_y - mouse_move_info.new_y) * t_delta_s * move_factor;
 			if (angle_beta <= -std::numbers::pi_v<float> / 2) {
 				angle_beta = -std::numbers::pi_v<float> / 2 + 0.00001f;
 			}
@@ -1196,7 +1202,7 @@ int main(int, char* []) {
 					// Setting t_move_end to zero will trigger a new destination
 					t_move_end = 0;
 				}
-				if (currentFrame > t_move_end) {
+				if (t_current_frame > t_move_end) {
 					if (idx_dest != -1) {
 						// Don't move source circle when initializing the app
 						voronoi_physics[idx_src].pos[0] = voronoi_physics[idx_dest].pos[0];
@@ -1212,8 +1218,8 @@ int main(int, char* []) {
 					auto x2 = voronoi_physics[idx_src].pos[0];
 					auto y2 = voronoi_physics[idx_src].pos[1];
 					float d = std::sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
-					t_move_end = currentFrame + d * 0.005f;
-					t_move_start = currentFrame;
+					t_move_end = t_current_frame + d * 0.005f;
+					t_move_start = t_current_frame;
 					auto diff_x = voronoi_physics[idx_dest].pos[0] - voronoi_physics[idx_src].pos[0];
 					auto diff_y = voronoi_physics[idx_dest].pos[1] - voronoi_physics[idx_src].pos[1];
 					move_origin[0] = voronoi_physics[idx_src].pos[0];
@@ -1221,7 +1227,7 @@ int main(int, char* []) {
 					move_vector[0] = diff_x;
 					move_vector[1] = diff_y;
 				}
-				auto t = (currentFrame - t_move_start) / (t_move_end - t_move_start);
+				auto t = (t_current_frame - t_move_start) / (t_move_end - t_move_start);
 				voronoi_physics[idx_src].pos[0] = move_origin[0] + t * move_vector[0];
 				voronoi_physics[idx_src].pos[1] = move_origin[1] + t * move_vector[1];
 				block_ids[idx_src] = { (int)voronoi_physics[idx_src].pos[0] / block_size, (int)voronoi_physics[idx_src].pos[1] / block_size };
@@ -1248,15 +1254,18 @@ int main(int, char* []) {
 		break;
 		case Shaders::mold:
 			{
-			shader_use_program(id_program_mold_compute);
-			shader_set_float(id_program_mold_compute, "t_tot", currentFrame);
-			shader_set_float(id_program_mold_compute, "t_delta", deltaTime);
-			int tot_num_actions = 3; // Must sync with the number of actions in mold::main()
-			for (int action_id = 0; action_id < tot_num_actions; action_id++) {
-				shader_set_int(id_program_mold_compute, "action_id", action_id);
-				glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
-				//glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+			t_acc_mold_move_ms += t_delta_s * 1000.0f;
+			while (t_acc_mold_move_ms > t_step_ms) {
+				shader_use_program(id_program_mold_compute);
+				shader_set_float(id_program_mold_compute, "pseudo_random_float", t_current_frame);
+				int tot_num_actions = 3; // Must sync with the number of actions in mold::main()
+				for (int action_id = 0; action_id < tot_num_actions; action_id++) {
+					shader_set_int(id_program_mold_compute, "action_id", action_id);
+					glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
+					//glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+					glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+				}
+				t_acc_mold_move_ms -= t_step_ms;
 			}
 			shader_use_program(id_program_mold_render);
 			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
@@ -1265,7 +1274,7 @@ int main(int, char* []) {
 			break;
 		case Shaders::funky:
 			shader_use_program(id_program_funky);
-			shader_set_float(id_program_funky, "t", currentFrame);
+			shader_set_float(id_program_funky, "t", t_current_frame);
 			shader_set_vec2(id_program_funky, "mouse_pos", glm::vec2(xpos, ypos));
 			shader_set_vec2(id_program_funky, "background_center", background_center);
 			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
@@ -1274,7 +1283,7 @@ int main(int, char* []) {
 		case Shaders::rays:
 			{
 				shader_use_program(id_program_rays);
-				shader_set_float(id_program_rays, "t", currentFrame);
+				shader_set_float(id_program_rays, "t", t_current_frame);
 				shader_set_vec2(id_program_rays, "mouse_pos", glm::vec2(xpos, ypos));
 				the_focus.x = std::sin(angle_alpha) * std::cos(angle_beta);
 				the_focus.y = std::sin(angle_beta);

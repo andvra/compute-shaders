@@ -5,8 +5,8 @@ layout(rgba32f, binding = 0) uniform image2D img_output;
 layout(location = 0) uniform int image_width;
 layout(location = 1) uniform int image_height;
 layout(location = 2) uniform int action_id;
-layout(location = 3) uniform float t_tot;
-layout(location = 4) uniform float t_delta;
+layout(location = 3) uniform float pseudo_random_float;
+layout(location = 4) uniform float t_step_ms;   // Pre-defined step length
 layout(location = 5) uniform int num_types;
 
 layout(std430, binding = 7) buffer layout_mold_particles
@@ -37,7 +37,7 @@ void darken(ivec2 texel_coord) {
         return;
     }
 
-    float reduce_factor = t_delta;
+    float reduce_factor = t_step_ms / 1000.0f;
 
     for (int c = 0; c < num_types; c++) {
         int idx = num_types * (texel_coord.x + image_width * texel_coord.y) + c;
@@ -90,18 +90,19 @@ void move(ivec2 texel_coord) {
     float val_right = get_area_value(ivec2(pos_x_right, pos_y_right), search_radius_px, mold_particles[idx].type);
     float max_val = max(max(val_left, val_fwd), val_right);
 
+    float factor_rotate = 0.1f;
     if (max_val > 0) {
         if (max_val == val_left && max_val > 0) {
-            mold_particles[idx].angle += 100.0f * t_delta;
+            mold_particles[idx].angle += factor_rotate * t_step_ms;
         }
         if (max_val == val_right) {
-            mold_particles[idx].angle -= 100.0f * t_delta;
+            mold_particles[idx].angle -= factor_rotate * t_step_ms;
         }
     }
 
-    float move_factor = 100.0f;
-    float new_x = mold_particles[idx].pos.x + move_factor * t_delta * cos(mold_particles[idx].angle);
-    float new_y = mold_particles[idx].pos.y + move_factor * t_delta * sin(mold_particles[idx].angle);
+    float factor_move = 0.1f;
+    float new_x = mold_particles[idx].pos.x + factor_move * t_step_ms * cos(mold_particles[idx].angle);
+    float new_y = mold_particles[idx].pos.y + factor_move * t_step_ms * sin(mold_particles[idx].angle);
 
     bool update_angle = false;
     bool do_move = true;
@@ -124,7 +125,7 @@ void move(ivec2 texel_coord) {
 
     if (update_angle) {
         // A way to generate a "random" behavior
-        float new_angle = PI * (1.0f + sin(t_tot * float(idx)));
+        float new_angle = PI * (1.0f + sin(pseudo_random_float * float(idx)));
         mold_particles[idx].angle = new_angle;
     }
 
