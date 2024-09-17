@@ -1,0 +1,2 @@
+- Seems to be a memory leak using many particles? It slows down significantly after a while if we use 2M+ particles
+- Separation between different mold types does not seem to work
