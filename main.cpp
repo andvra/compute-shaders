@@ -506,7 +506,8 @@ int main(int, char* []) {
 	std::filesystem::path solver_path("solver.glsl");
 	std::filesystem::path rays_path("rays.glsl");
 	std::filesystem::path path_voronoi("voronoi.glsl");
-	std::filesystem::path mold_path("mold.glsl");
+	std::filesystem::path path_mold_compute("mold_compute.glsl");
+	std::filesystem::path path_mold_render("mold_render.glsl");
 	std::filesystem::path path_physics_compute("physics_compute.glsl");
 	std::filesystem::path path_physics_render("physics_render.glsl");
 	std::filesystem::path path_shared_shapes("shared_shapes.glsl");
@@ -524,7 +525,8 @@ int main(int, char* []) {
 
 	GLuint id_program_physics_compute;
 	GLuint id_program_physics_render;
-	GLuint id_program_mold;
+	GLuint id_program_mold_compute;
+	GLuint id_program_mold_render;
 	GLuint id_program_rays;
 	GLuint id_program_voronoi;
 	GLuint id_program_solver;
@@ -540,7 +542,8 @@ int main(int, char* []) {
 	std::vector<Compute_shader_info> compute_shader_info = {
 		{"physics_compute",	id_program_physics_compute,	path_physics_compute,	{path_shared_shapes}},
 		{"physics_render",	id_program_physics_render,	path_physics_render,	{path_shared_shapes}},
-		{"mold",			id_program_mold,			mold_path},
+		{"mold_compute",	id_program_mold_compute,	path_mold_compute},
+		{"mold_render",		id_program_mold_render,		path_mold_render},
 		{"rays",			id_program_rays,			rays_path},
 		{"voronoi",			id_program_voronoi,			path_voronoi,			{path_shared_shapes}},
 		{"solver",			id_program_solver,			solver_path},
@@ -558,10 +561,10 @@ int main(int, char* []) {
 		}
 	}
 
-	shader_use_program(id_program_mold);
-	shader_set_int(id_program_mold, "w", window_width);
-	shader_set_int(id_program_mold, "h", window_height);
-	shader_set_int(id_program_mold, "action_id", 1);
+	shader_use_program(id_program_mold_render);
+	shader_set_int(id_program_mold_render, "w", window_width);
+	shader_set_int(id_program_mold_render, "h", window_height);
+	shader_set_int(id_program_mold_render, "action_id", 1);
 
 	shader_use_program(id_program_canvas);
 	shader_set_int(id_program_canvas, "tex", 0);
@@ -886,8 +889,8 @@ int main(int, char* []) {
 	shader_set_int(id_program_funky, "w", window_width);
 	shader_set_int(id_program_funky, "h", window_height);
 
-	shader_use_program(id_program_mold);
-	shader_set_int(id_program_mold, "num_types", num_types);
+	shader_use_program(id_program_mold_render);
+	shader_set_int(id_program_mold_render, "num_types", num_types);
 
 	auto num_circles_physics = 2;
 	std::vector<Circle> circles_physics(num_circles_physics);
@@ -907,7 +910,7 @@ int main(int, char* []) {
 	physics_physics[1] = physics_physics[0];
 	circles_physics[1].color[1] = 0;
 	physics_physics[1].pos[1] = 50;
-	physics_physics[1].dir[0] = 0.7;
+	physics_physics[1].dir[0] = 0.7f;
 	circles_physics[1].r = 5;
 	physics_physics[1].mass = circles_physics[1].r * circles_physics[1].r;
 	physics_physics[1].speed = 1;
@@ -916,7 +919,7 @@ int main(int, char* []) {
 	float world_max_x = 100.0f;
 	float world_min_y = 0.0f;
 	float world_max_y = 100.0f * window_height / window_width;
-	float step_ms = 0.01;
+	float step_ms = 0.01f;
 
 	setup_ssbo(static_cast<GLuint>(Ssbo_index::physics_circles), GL_DYNAMIC_DRAW, sizeof(Circle)* circles_physics.size(), circles_physics.data());
 	setup_ssbo(static_cast<GLuint>(Ssbo_index::physics_physics), GL_DYNAMIC_DRAW, sizeof(Physics) * physics_physics.size(), physics_physics.data());
@@ -926,7 +929,7 @@ int main(int, char* []) {
 	shader_set_float(id_program_physics_compute, "world_max_x", world_max_x);
 	shader_set_float(id_program_physics_compute, "world_min_u", world_min_y);
 	shader_set_float(id_program_physics_compute, "world_max_y", world_max_y);
-	shader_set_float(id_program_physics_compute, "step_ms", 0.01f);
+	shader_set_float(id_program_physics_compute, "step_ms", step_ms);
 
 	shader_use_program(id_program_physics_render);
 	shader_set_float(id_program_physics_render, "world_min_x", world_min_x);
@@ -1244,12 +1247,12 @@ int main(int, char* []) {
 		break;
 		case Shaders::mold:
 			{
-			shader_use_program(id_program_mold);
-			shader_set_float(id_program_mold, "t_tot", currentFrame);
-			shader_set_float(id_program_mold, "t_delta", deltaTime);
+			shader_use_program(id_program_mold_render);
+			shader_set_float(id_program_mold_render, "t_tot", currentFrame);
+			shader_set_float(id_program_mold_render, "t_delta", deltaTime);
 			int tot_num_actions = 4; // Must sync with the number of actions in mold::main()
 			for (int action_id = 0; action_id < tot_num_actions; action_id++) {
-				shader_set_int(id_program_mold, "action_id", action_id);
+				shader_set_int(id_program_mold_render, "action_id", action_id);
 				glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
 				//glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
