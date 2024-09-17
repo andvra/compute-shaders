@@ -8,6 +8,7 @@ layout(location = 2) uniform int action_id;
 layout(location = 3) uniform float pseudo_random_float;
 layout(location = 4) uniform float t_step_ms;   // Pre-defined step length
 layout(location = 5) uniform int num_types;
+layout(location = 6) uniform float speed_factor;
 
 layout(std430, binding = 7) buffer layout_mold_particles
 {
@@ -19,7 +20,7 @@ layout(std430, binding = 8) buffer layout_mold_intensity
     float mold_intensity[];
 };
 
-void release_mold(ivec2 texel_coord) {
+void extract_mold(ivec2 texel_coord) {
     int idx_particle = texel_coord.x + texel_coord.y * image_width;
 
     if (idx_particle >= mold_particles.length()) {
@@ -46,7 +47,7 @@ void darken(ivec2 texel_coord) {
         return;
     }
 
-    float reduce_factor = t_step_ms / 1000.0f;
+    float reduce_factor = speed_factor * t_step_ms / 1000.0f;
 
     for (int c = 0; c < num_types; c++) {
         int idx = num_types * (texel_coord.x + image_width * texel_coord.y) + c;
@@ -58,8 +59,13 @@ float get_area_value(ivec2 pos_center, int r, int mold_type) {
     float ret = 0;
     int num_pixels = 0;
 
-    for (int x = max(0, pos_center.x - r); x < min(image_width - 1, pos_center.x + r); x++) {
-        for (int y = max(0, pos_center.y - r); y < min(image_height - 1, pos_center.y + r); y++) {
+    int x_start = max(0, pos_center.x - r);
+    int x_end_exclusive = min(image_width - 1, pos_center.x + r);
+    int y_start = max(0, pos_center.y - r);
+    int y_end_exclusive = min(image_height - 1, pos_center.y + r);
+
+    for (int x = x_start; x < x_end_exclusive; x++) {
+        for (int y = y_start; y < y_end_exclusive; y++) {
             for (int c = 0; c < num_types; c++) {
                 int idx = num_types * (x + y * image_width) + c;
                 if(c == mold_type){
@@ -105,18 +111,51 @@ void move(ivec2 texel_coord) {
 
     bool is_largest_left = abs_left > abs_right && abs_left > abs_fwd;
     bool is_largest_right = abs_right > abs_left && abs_right > abs_fwd;
+    bool is_largest_fwd = abs_fwd > abs_left && abs_fwd > abs_right;
+    float factor_rotate = speed_factor * 2 * PI * 0.015f;
 
-    float factor_rotate = 2 * PI * 0.015f;
+    bool rotate_left = false;
+    bool rotate_right = false;
 
     if (is_largest_left) {
-        mold_particles[idx].angle += factor_rotate * t_step_ms;
+        if (val_left > 0) {
+            rotate_left = true;
+        }
+        else {
+            rotate_right = true;
+        }
     }
 
     if (is_largest_right) {
+        if (val_right > 0) {
+            rotate_right = true;
+        }
+        else {
+            rotate_left = true;
+        }
+    }
+
+    if (is_largest_fwd) {
+        if (val_fwd < 0) {
+            // Other mold types ahead!
+            if (val_left > val_right) {
+                rotate_left = true;
+            }
+            else {
+                rotate_right = true;
+            }
+        }
+    }
+
+    if (rotate_left) {
+        mold_particles[idx].angle += factor_rotate * t_step_ms;
+    }
+
+    if (rotate_right) {
         mold_particles[idx].angle -= factor_rotate * t_step_ms;
     }
 
-    float factor_move = 0.1f;
+    float factor_move = speed_factor * 0.1f;
     float new_x = mold_particles[idx].pos.x + factor_move * t_step_ms * cos(mold_particles[idx].angle);
     float new_y = mold_particles[idx].pos.y + factor_move * t_step_ms * sin(mold_particles[idx].angle);
 
@@ -158,6 +197,6 @@ void main()
     switch (action_id) {
     case 0: move(texel_coord); break;
     case 1: darken(texel_coord); break;
-    case 2: release_mold(texel_coord); break;
+    case 2: extract_mold(texel_coord); break;
     }
 }

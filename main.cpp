@@ -862,12 +862,13 @@ int main(int, char* []) {
 		shader_set_float(id_program_voronoi, "toolbar_opacity", toolbar_opacity);
 	}
 
-	size_t num_mold_particles = 100'000;
+	size_t num_mold_particles = 400000;
 
 	std::vector<Mold_particle> mold_particles(num_mold_particles);
 	int type_id = 0;
-	int num_types = 2;
+	int num_types = 3;
 	float t_step_ms = 20.0f;	// This is how long one physic step should be
+	float mold_speed_factor = 1.f;	// All mold movement is multiplied by this factor
 
 	enum class Mold_init_mode {
 		Random,
@@ -921,6 +922,7 @@ int main(int, char* []) {
 	shader_set_int(id_program_mold_compute, "image_width", window_width);
 	shader_set_int(id_program_mold_compute, "image_height", window_height);
 	shader_set_float(id_program_mold_compute, "t_step_ms", t_step_ms);
+	shader_set_float(id_program_mold_compute, "speed_factor", mold_speed_factor);
 
 	shader_use_program(id_program_funky);
 	shader_set_int(id_program_funky, "w", window_width);
