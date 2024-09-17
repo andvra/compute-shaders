@@ -64,7 +64,7 @@ struct Physics {
 };
 
 struct Mold_particle {
-	float pos[2];
+	alignas(8) float pos[2];
 	float angle;
 	int type;
 };
@@ -542,8 +542,8 @@ int main(int, char* []) {
 	std::vector<Compute_shader_info> compute_shader_info = {
 		{"physics_compute",	id_program_physics_compute,	path_physics_compute,	{path_shared_shapes}},
 		{"physics_render",	id_program_physics_render,	path_physics_render,	{path_shared_shapes}},
-		{"mold_compute",	id_program_mold_compute,	path_mold_compute},
-		{"mold_render",		id_program_mold_render,		path_mold_render},
+		{"mold_compute",	id_program_mold_compute,	path_mold_compute,		{path_shared_shapes}},
+		{"mold_render",		id_program_mold_render,		path_mold_render,		{path_shared_shapes}},
 		{"rays",			id_program_rays,			rays_path},
 		{"voronoi",			id_program_voronoi,			path_voronoi,			{path_shared_shapes}},
 		{"solver",			id_program_solver,			solver_path},
@@ -560,11 +560,6 @@ int main(int, char* []) {
 			return -1;
 		}
 	}
-
-	shader_use_program(id_program_mold_render);
-	shader_set_int(id_program_mold_render, "w", window_width);
-	shader_set_int(id_program_mold_render, "h", window_height);
-	shader_set_int(id_program_mold_render, "action_id", 1);
 
 	shader_use_program(id_program_canvas);
 	shader_set_int(id_program_canvas, "tex", 0);
@@ -885,12 +880,18 @@ int main(int, char* []) {
 
 	setup_ssbo(static_cast<GLuint>(Ssbo_index::mold_intensities), GL_DYNAMIC_DRAW, sizeof(float) * mold_intensities.size(), mold_intensities.data());
 
+	shader_use_program(id_program_mold_render);
+	shader_set_int(id_program_mold_render, "num_types", num_types);
+	shader_set_int(id_program_mold_render, "image_width", window_width);
+	shader_set_int(id_program_mold_render, "image_height", window_height);
+	shader_use_program(id_program_mold_compute);
+	shader_set_int(id_program_mold_compute, "num_types", num_types);
+	shader_set_int(id_program_mold_compute, "image_width", window_width);
+	shader_set_int(id_program_mold_compute, "image_height", window_height);
+
 	shader_use_program(id_program_funky);
 	shader_set_int(id_program_funky, "w", window_width);
 	shader_set_int(id_program_funky, "h", window_height);
-
-	shader_use_program(id_program_mold_render);
-	shader_set_int(id_program_mold_render, "num_types", num_types);
 
 	auto num_circles_physics = 2;
 	std::vector<Circle> circles_physics(num_circles_physics);
@@ -1247,16 +1248,19 @@ int main(int, char* []) {
 		break;
 		case Shaders::mold:
 			{
-			shader_use_program(id_program_mold_render);
-			shader_set_float(id_program_mold_render, "t_tot", currentFrame);
-			shader_set_float(id_program_mold_render, "t_delta", deltaTime);
-			int tot_num_actions = 4; // Must sync with the number of actions in mold::main()
+			shader_use_program(id_program_mold_compute);
+			shader_set_float(id_program_mold_compute, "t_tot", currentFrame);
+			shader_set_float(id_program_mold_compute, "t_delta", deltaTime);
+			int tot_num_actions = 3; // Must sync with the number of actions in mold::main()
 			for (int action_id = 0; action_id < tot_num_actions; action_id++) {
-				shader_set_int(id_program_mold_render, "action_id", action_id);
+				shader_set_int(id_program_mold_compute, "action_id", action_id);
 				glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
 				//glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 			}
+			shader_use_program(id_program_mold_render);
+			glDispatchCompute(workgroup_size_x, workgroup_size_y, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 			}
 			break;
 		case Shaders::funky:

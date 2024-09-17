@@ -11,3 +11,9 @@ struct Physics {
     float speed;
     float mass;
 };
+
+struct Mold_particle {
+    vec2 pos;
+    float angle;
+    int type;
+};
